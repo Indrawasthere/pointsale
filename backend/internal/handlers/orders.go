@@ -46,8 +46,8 @@ func (h *OrderHandler) GetOrders(c *gin.Context) {
 
 	// Build query with filters
 	queryBuilder := `
-		SELECT DISTINCT o.id, o.order_number, o.table_id, o.user_id, o.customer_name, 
-		       o.order_type, o.status, o.subtotal, o.tax_amount, o.discount_amount, 
+		SELECT DISTINCT o.id, o.order_number, o.table_id, o.user_id, o.customer_name,
+		       o.order_type, o.status, o.subtotal, o.tax_amount, o.discount_amount,
 		       o.total_amount, o.notes, o.created_at, o.updated_at, o.served_at, o.completed_at,
 		       t.table_number, t.location,
 		       u.username, u.first_name, u.last_name
@@ -88,7 +88,7 @@ func (h *OrderHandler) GetOrders(c *gin.Context) {
 	argIndex++
 	queryBuilder += fmt.Sprintf(" ORDER BY o.created_at DESC LIMIT $%d", argIndex)
 	args = append(args, perPage)
-	
+
 	argIndex++
 	queryBuilder += fmt.Sprintf(" OFFSET $%d", argIndex)
 	args = append(args, offset)
@@ -289,7 +289,7 @@ func (h *OrderHandler) CreateOrder(c *gin.Context) {
 	// Create order
 	orderID := uuid.New()
 	orderQuery := `
-		INSERT INTO orders (id, order_number, table_id, user_id, customer_name, order_type, status, 
+		INSERT INTO orders (id, order_number, table_id, user_id, customer_name, order_type, status,
 		                   subtotal, tax_amount, discount_amount, total_amount, notes)
 		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
 	`
@@ -309,7 +309,7 @@ func (h *OrderHandler) CreateOrder(c *gin.Context) {
 	for _, item := range req.Items {
 		// Get product price again for consistency
 		var price float64
-		err := tx.QueryRow("SELECT price FROM products WHERE id = $1", item.ProductID).Scan(&price)
+		err := tx.QueryRow("SELECT price FROM products WHERE id = Rp1", item.ProductID).Scan(&price)
 		if err != nil {
 			c.JSON(http.StatusInternalServerError, models.APIResponse{
 				Success: false,
@@ -324,7 +324,7 @@ func (h *OrderHandler) CreateOrder(c *gin.Context) {
 
 		itemQuery := `
 			INSERT INTO order_items (id, order_id, product_id, quantity, unit_price, total_price, special_instructions)
-			VALUES ($1, $2, $3, $4, $5, $6, $7)
+			VALUES (Rp1, Rp2, Rp3, Rp4, Rp5, Rp6, Rp7)
 		`
 
 		_, err = tx.Exec(itemQuery, itemID, orderID, item.ProductID, item.Quantity, price, totalPrice, item.SpecialInstructions)
@@ -501,10 +501,10 @@ func (h *OrderHandler) UpdateOrderStatus(c *gin.Context) {
 	}
 
 	// If order is completed or cancelled, free up the table
-	if (req.Status == "completed" || req.Status == "cancelled") {
+	if req.Status == "completed" || req.Status == "cancelled" {
 		_, err = tx.Exec(`
-			UPDATE dining_tables 
-			SET is_occupied = false 
+			UPDATE dining_tables
+			SET is_occupied = false
 			WHERE id IN (SELECT table_id FROM orders WHERE id = $1 AND table_id IS NOT NULL)
 		`, orderID)
 		if err != nil {
@@ -549,8 +549,8 @@ func (h *OrderHandler) getOrderByID(orderID uuid.UUID) (*models.Order, error) {
 	var username, firstName, lastName sql.NullString
 
 	query := `
-		SELECT o.id, o.order_number, o.table_id, o.user_id, o.customer_name, 
-		       o.order_type, o.status, o.subtotal, o.tax_amount, o.discount_amount, 
+		SELECT o.id, o.order_number, o.table_id, o.user_id, o.customer_name,
+		       o.order_type, o.status, o.subtotal, o.tax_amount, o.discount_amount,
 		       o.total_amount, o.notes, o.created_at, o.updated_at, o.served_at, o.completed_at,
 		       t.table_number, t.location,
 		       u.username, u.first_name, u.last_name
@@ -604,7 +604,7 @@ func (h *OrderHandler) getOrderByID(orderID uuid.UUID) (*models.Order, error) {
 
 func (h *OrderHandler) loadOrderItems(order *models.Order) error {
 	query := `
-		SELECT oi.id, oi.product_id, oi.quantity, oi.unit_price, oi.total_price, 
+		SELECT oi.id, oi.product_id, oi.quantity, oi.unit_price, oi.total_price,
 		       oi.special_instructions, oi.status, oi.created_at, oi.updated_at,
 		       p.name, p.description, p.price, p.preparation_time
 		FROM order_items oi
@@ -653,7 +653,7 @@ func (h *OrderHandler) loadOrderItems(order *models.Order) error {
 
 func (h *OrderHandler) loadOrderPayments(order *models.Order) error {
 	query := `
-		SELECT p.id, p.payment_method, p.amount, p.reference_number, p.status, 
+		SELECT p.id, p.payment_method, p.amount, p.reference_number, p.status,
 		       p.processed_by, p.processed_at, p.created_at,
 		       u.username, u.first_name, u.last_name
 		FROM payments p
@@ -704,4 +704,3 @@ func (h *OrderHandler) generateOrderNumber() string {
 	timestamp := time.Now().Format("20060102")
 	return fmt.Sprintf("ORD%s%04d", timestamp, time.Now().UnixNano()%10000)
 }
-

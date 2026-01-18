@@ -1,54 +1,60 @@
-import { useState } from 'react'
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
-import { Button } from '@/components/ui/button'
-import { Input } from '@/components/ui/input'
-import { Badge } from '@/components/ui/badge'
-import { 
-  Settings, 
-  Database, 
+import { useState } from "react";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Badge } from "@/components/ui/badge";
+import {
+  Settings,
+  Database,
   Bell,
   Globe,
   DollarSign,
   Printer,
   Save,
-  RotateCcw
-} from 'lucide-react'
+  RotateCcw,
+} from "lucide-react";
 
 export function AdminSettings() {
   const [settings, setSettings] = useState({
-    restaurant_name: 'My Restaurant',
-    currency: 'USD',
-    tax_rate: '10.00',
-    service_charge: '5.00',
-    receipt_header: 'Thank you for dining with us!',
-    receipt_footer: 'Visit again soon!',
-    notification_email: 'admin@restaurant.com',
-    backup_frequency: 'daily',
-    theme: 'light',
-    language: 'en'
-  })
+    restaurant_name: "My Restaurant",
+    currency: "IDR",
+    tax_rate: "2.5",
+    service_charge: "5",
+    receipt_header: "Thank you for dining with us!",
+    receipt_footer: "Visit again soon!",
+    notification_email: "admin@restaurant.com",
+    backup_frequency: "daily",
+    theme: "light",
+    language: "en",
+  });
 
   const handleSave = () => {
     // TODO: Implement settings save
-    console.log('Saving settings:', settings)
-    alert('Settings saved successfully!')
-  }
+    console.log("Saving settings:", settings);
+    alert("Settings saved successfully!");
+  };
 
   const handleReset = () => {
     // Reset to defaults
     setSettings({
-      restaurant_name: 'My Restaurant',
-      currency: 'USD',
-      tax_rate: '10.00',
-      service_charge: '5.00',
-      receipt_header: 'Thank you for dining with us!',
-      receipt_footer: 'Visit again soon!',
-      notification_email: 'admin@restaurant.com',
-      backup_frequency: 'daily',
-      theme: 'light',
-      language: 'en'
-    })
-  }
+      restaurant_name: "My Restaurant",
+      currency: "IDR",
+      tax_rate: "2.5",
+      service_charge: "5",
+      receipt_header: "Thank you for dining with us!",
+      receipt_footer: "Visit again soon!",
+      notification_email: "admin@restaurant.com",
+      backup_frequency: "daily",
+      theme: "light",
+      language: "en",
+    });
+  };
 
   return (
     <div className="p-6 space-y-6 max-w-4xl">
@@ -86,10 +92,14 @@ export function AdminSettings() {
           </CardHeader>
           <CardContent className="space-y-4">
             <div>
-              <label className="text-sm font-medium mb-2 block">Restaurant Name</label>
+              <label className="text-sm font-medium mb-2 block">
+                Restaurant Name
+              </label>
               <Input
                 value={settings.restaurant_name}
-                onChange={(e) => setSettings({...settings, restaurant_name: e.target.value})}
+                onChange={(e) =>
+                  setSettings({ ...settings, restaurant_name: e.target.value })
+                }
                 placeholder="Enter restaurant name"
               />
             </div>
@@ -98,7 +108,9 @@ export function AdminSettings() {
               <select
                 className="w-full p-2 border border-input rounded-md bg-background"
                 value={settings.language}
-                onChange={(e) => setSettings({...settings, language: e.target.value})}
+                onChange={(e) =>
+                  setSettings({ ...settings, language: e.target.value })
+                }
               >
                 <option value="en">English</option>
                 <option value="es">Spanish</option>
@@ -125,30 +137,40 @@ export function AdminSettings() {
               <select
                 className="w-full p-2 border border-input rounded-md bg-background"
                 value={settings.currency}
-                onChange={(e) => setSettings({...settings, currency: e.target.value})}
+                onChange={(e) =>
+                  setSettings({ ...settings, currency: e.target.value })
+                }
               >
-                <option value="USD">USD ($)</option>
+                <option value="IDR">IDR (Rp)</option>
                 <option value="EUR">EUR (€)</option>
                 <option value="GBP">GBP (£)</option>
               </select>
             </div>
             <div className="grid grid-cols-2 gap-4">
               <div>
-                <label className="text-sm font-medium mb-2 block">Tax Rate (%)</label>
+                <label className="text-sm font-medium mb-2 block">
+                  Tax Rate (%)
+                </label>
                 <Input
                   type="number"
                   step="0.01"
                   value={settings.tax_rate}
-                  onChange={(e) => setSettings({...settings, tax_rate: e.target.value})}
+                  onChange={(e) =>
+                    setSettings({ ...settings, tax_rate: e.target.value })
+                  }
                 />
               </div>
               <div>
-                <label className="text-sm font-medium mb-2 block">Service Charge (%)</label>
+                <label className="text-sm font-medium mb-2 block">
+                  Service Charge (%)
+                </label>
                 <Input
                   type="number"
                   step="0.01"
                   value={settings.service_charge}
-                  onChange={(e) => setSettings({...settings, service_charge: e.target.value})}
+                  onChange={(e) =>
+                    setSettings({ ...settings, service_charge: e.target.value })
+                  }
                 />
               </div>
             </div>
@@ -168,18 +190,26 @@ export function AdminSettings() {
           </CardHeader>
           <CardContent className="space-y-4">
             <div>
-              <label className="text-sm font-medium mb-2 block">Receipt Header</label>
+              <label className="text-sm font-medium mb-2 block">
+                Receipt Header
+              </label>
               <Input
                 value={settings.receipt_header}
-                onChange={(e) => setSettings({...settings, receipt_header: e.target.value})}
+                onChange={(e) =>
+                  setSettings({ ...settings, receipt_header: e.target.value })
+                }
                 placeholder="Header message"
               />
             </div>
             <div>
-              <label className="text-sm font-medium mb-2 block">Receipt Footer</label>
+              <label className="text-sm font-medium mb-2 block">
+                Receipt Footer
+              </label>
               <Input
                 value={settings.receipt_footer}
-                onChange={(e) => setSettings({...settings, receipt_footer: e.target.value})}
+                onChange={(e) =>
+                  setSettings({ ...settings, receipt_footer: e.target.value })
+                }
                 placeholder="Footer message"
               />
             </div>
@@ -193,9 +223,7 @@ export function AdminSettings() {
               <Settings className="w-5 h-5" />
               System Configuration
             </CardTitle>
-            <CardDescription>
-              System behavior and preferences
-            </CardDescription>
+            <CardDescription>System behavior and preferences</CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
             <div>
@@ -203,7 +231,9 @@ export function AdminSettings() {
               <select
                 className="w-full p-2 border border-input rounded-md bg-background"
                 value={settings.theme}
-                onChange={(e) => setSettings({...settings, theme: e.target.value})}
+                onChange={(e) =>
+                  setSettings({ ...settings, theme: e.target.value })
+                }
               >
                 <option value="light">Light</option>
                 <option value="dark">Dark</option>
@@ -211,11 +241,15 @@ export function AdminSettings() {
               </select>
             </div>
             <div>
-              <label className="text-sm font-medium mb-2 block">Backup Frequency</label>
+              <label className="text-sm font-medium mb-2 block">
+                Backup Frequency
+              </label>
               <select
                 className="w-full p-2 border border-input rounded-md bg-background"
                 value={settings.backup_frequency}
-                onChange={(e) => setSettings({...settings, backup_frequency: e.target.value})}
+                onChange={(e) =>
+                  setSettings({ ...settings, backup_frequency: e.target.value })
+                }
               >
                 <option value="hourly">Hourly</option>
                 <option value="daily">Daily</option>
@@ -239,15 +273,22 @@ export function AdminSettings() {
           </CardHeader>
           <CardContent className="space-y-4">
             <div>
-              <label className="text-sm font-medium mb-2 block">Notification Email</label>
+              <label className="text-sm font-medium mb-2 block">
+                Notification Email
+              </label>
               <Input
                 type="email"
                 value={settings.notification_email}
-                onChange={(e) => setSettings({...settings, notification_email: e.target.value})}
+                onChange={(e) =>
+                  setSettings({
+                    ...settings,
+                    notification_email: e.target.value,
+                  })
+                }
                 placeholder="admin@restaurant.com"
               />
             </div>
-            
+
             <div className="grid grid-cols-2 md:grid-cols-4 gap-4 pt-4">
               <div className="flex items-center gap-2">
                 <Badge variant="secondary">Low Stock Alerts</Badge>
@@ -307,5 +348,5 @@ export function AdminSettings() {
         </CardContent>
       </Card>
     </div>
-  )
+  );
 }

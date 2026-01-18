@@ -1,383 +1,532 @@
-import { useState, useEffect, useCallback } from 'react';
-import { useQuery } from '@tanstack/react-query';
-import { Button } from '@/components/ui/button';
-import { Badge } from '@/components/ui/badge';
-import { Card, CardContent } from '@/components/ui/card';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { 
-  Settings, 
-  RefreshCw, 
-  Volume2, 
-  VolumeX, 
+import { useState } from "react";
+import {
+  RefreshCw,
+  Volume2,
+  VolumeX,
   Clock,
   ChefHat,
   Package,
   CheckCircle,
-  AlertCircle
-} from 'lucide-react';
-import { cn } from '@/lib/utils';
-import { EnhancedKitchenOrderCard } from './EnhancedKitchenOrderCard';
-import { TakeawayBoard } from './TakeawayBoard';
-import { SoundSettings } from './SoundSettings';
-import { kitchenSoundService } from '@/services/soundService';
-import apiClient from '@/api/client';
-import type { User, Order } from '@/types';
+  AlertCircle,
+  LogOut,
+  Flame,
+  Zap,
+} from "lucide-react";
 
-interface EnhancedKitchenLayoutProps {
-  user: User;
-}
+// Mock data
+const mockOrders = [
+  {
+    id: "1",
+    order_number: "ORD001",
+    customer_name: "John Doe",
+    table: { table_number: "3" },
+    order_type: "dine_in",
+    status: "confirmed",
+    notes: "No onions on burger",
+    created_at: new Date(Date.now() - 5 * 60000).toISOString(),
+    items: [
+      {
+        id: "i1",
+        quantity: 2,
+        product: { name: "Cheeseburger" },
+        special_instructions: "No onions",
+        status: "preparing",
+      },
+      {
+        id: "i2",
+        quantity: 1,
+        product: { name: "French Fries" },
+        special_instructions: "Extra crispy",
+        status: "preparing",
+      },
+    ],
+  },
+  {
+    id: "2",
+    order_number: "ORD002",
+    customer_name: "Jane Smith",
+    order_type: "takeout",
+    status: "preparing",
+    created_at: new Date(Date.now() - 12 * 60000).toISOString(),
+    items: [
+      {
+        id: "i3",
+        quantity: 1,
+        product: { name: "Grilled Salmon" },
+        special_instructions: null,
+        status: "preparing",
+      },
+      {
+        id: "i4",
+        quantity: 2,
+        product: { name: "Caesar Salad" },
+        special_instructions: null,
+        status: "ready",
+      },
+    ],
+  },
+  {
+    id: "3",
+    order_number: "ORD003",
+    customer_name: "Mike Wilson",
+    table: { table_number: "5" },
+    order_type: "dine_in",
+    status: "ready",
+    created_at: new Date(Date.now() - 8 * 60000).toISOString(),
+    items: [
+      {
+        id: "i5",
+        quantity: 2,
+        product: { name: "Beef Steak" },
+        special_instructions: "Medium rare",
+        status: "ready",
+      },
+    ],
+  },
+];
 
-export function EnhancedKitchenLayout({ user }: EnhancedKitchenLayoutProps) {
-  const [selectedTab, setSelectedTab] = useState('active-orders');
-  const [autoRefresh, setAutoRefresh] = useState(true);
-  const [showSoundSettings, setShowSoundSettings] = useState(false);
+const mockUser = {
+  first_name: "Chef",
+  last_name: "Mario",
+};
+
+export function KitchenDisplay() {
+  const [selectedTab, setSelectedTab] = useState("active");
   const [soundEnabled, setSoundEnabled] = useState(true);
-  const [previousOrderIds, setPreviousOrderIds] = useState<Set<string>>(new Set());
-  const [lastRefresh, setLastRefresh] = useState<Date>(new Date());
+  const [volume, setVolume] = useState(0.7);
+  const [showSettings, setShowSettings] = useState(false);
+  const [orders, setOrders] = useState(mockOrders);
 
-  // Initialize sound service
-  useEffect(() => {
-    kitchenSoundService.initialize().catch(error => {
-      console.warn('Sound service initialization failed:', error);
-    });
-    
-    const settings = kitchenSoundService.getSettings();
-    setSoundEnabled(settings.enabled);
-  }, []);
-
-  // Fetch kitchen orders with smart polling
-  const { data: ordersResponse, isLoading, refetch, error } = useQuery({
-    queryKey: ['enhancedKitchenOrders'],
-    queryFn: () => apiClient.getKitchenOrders('all'),
-    refetchInterval: autoRefresh ? 3000 : false, // 3-second refresh for balance
-    select: (data) => data.data || [],
-    onSuccess: (data) => {
-      setLastRefresh(new Date());
-      
-      // Check for new orders and play sound
-      const currentOrders = data || [];
-      const currentOrderIds = new Set(currentOrders.map((order: Order) => order.id));
-      const newOrderIds = currentOrders
-        .filter((order: Order) => !previousOrderIds.has(order.id) && order.status === 'confirmed')
-        .map((order: Order) => order.id);
-      
-      // Play sound for new orders
-      newOrderIds.forEach(async (orderId) => {
-        try {
-          await kitchenSoundService.playNewOrderSound(orderId);
-        } catch (error) {
-          console.error('Failed to play new order sound:', error);
-        }
-      });
-      
-      setPreviousOrderIds(currentOrderIds);
-    },
-  });
-
-  const orders = ordersResponse || [];
-
-  // Group orders by status for better organization
-  const ordersByStatus = {
-    confirmed: orders.filter((order: Order) => order.status === 'confirmed'),
-    preparing: orders.filter((order: Order) => order.status === 'preparing'),
-    ready: orders.filter((order: Order) => order.status === 'ready'),
+  const getWaitTime = (createdAt) => {
+    const created = new Date(createdAt);
+    const now = new Date();
+    return Math.floor((now.getTime() - created.getTime()) / 1000 / 60);
   };
 
-  // Calculate statistics
+  const getUrgency = (createdAt) => {
+    const waitTime = getWaitTime(createdAt);
+    if (waitTime > 20)
+      return {
+        level: "critical",
+        color: "border-red-500 bg-red-50",
+        label: "CRITICAL",
+        icon: "🔴",
+      };
+    if (waitTime > 15)
+      return {
+        level: "urgent",
+        color: "border-orange-500 bg-orange-50",
+        label: "URGENT",
+        icon: "🟠",
+      };
+    if (waitTime > 10)
+      return {
+        level: "warning",
+        color: "border-yellow-500 bg-yellow-50",
+        label: "WARNING",
+        icon: "🟡",
+      };
+    return {
+      level: "normal",
+      color: "border-blue-500 bg-blue-50",
+      label: "NEW",
+      icon: "🔵",
+    };
+  };
+
   const stats = {
+    confirmed: orders.filter((o) => o.status === "confirmed").length,
+    preparing: orders.filter((o) => o.status === "preparing").length,
+    ready: orders.filter((o) => o.status === "ready").length,
     total: orders.length,
-    newOrders: ordersByStatus.confirmed.length,
-    preparing: ordersByStatus.preparing.length,
-    ready: ordersByStatus.ready.length,
-    urgent: orders.filter((order: Order) => {
-      const created = new Date(order.created_at);
-      const now = new Date();
-      const minutesWaiting = Math.floor((now.getTime() - created.getTime()) / 1000 / 60);
-      return minutesWaiting > 15;
-    }).length,
   };
 
-  // Handle order status updates
-  const handleOrderStatusUpdate = useCallback(async (orderId: string, newStatus: string) => {
+  const handleStartCooking = (orderId) => {
+    setOrders(
+      orders.map((o) => (o.id === orderId ? { ...o, status: "preparing" } : o)),
+    );
+  };
+
+  const handleMarkReady = (orderId) => {
+    setOrders(
+      orders.map((o) => (o.id === orderId ? { ...o, status: "ready" } : o)),
+    );
+  };
+
+  const handleCompleteOrder = (orderId) => {
+    setOrders(orders.filter((o) => o.id !== orderId));
+  };
+
+  const playSound = (type = "new") => {
+    if (!soundEnabled) return;
     try {
-      await apiClient.updateOrderStatus(orderId, newStatus);
-      refetch();
+      const audioContext = new (window.AudioContext ||
+        (window as any).webkitAudioContext)();
+      const osc = audioContext.createOscillator();
+      const gain = audioContext.createGain();
+      osc.connect(gain);
+      gain.connect(audioContext.destination);
+
+      if (type === "new") {
+        osc.frequency.setValueAtTime(800, audioContext.currentTime);
+        gain.gain.setValueAtTime(volume * 0.3, audioContext.currentTime);
+        gain.gain.exponentialRampToValueAtTime(
+          0.01,
+          audioContext.currentTime + 0.5,
+        );
+        osc.start();
+        osc.stop(audioContext.currentTime + 0.5);
+      } else {
+        osc.frequency.setValueAtTime(1200, audioContext.currentTime);
+        gain.gain.setValueAtTime(volume * 0.3, audioContext.currentTime);
+        gain.gain.exponentialRampToValueAtTime(
+          0.01,
+          audioContext.currentTime + 0.3,
+        );
+        osc.start();
+        osc.stop(audioContext.currentTime + 0.3);
+      }
     } catch (error) {
-      console.error('Failed to update order status:', error);
+      console.log("Sound failed:", error);
     }
-  }, [refetch]);
+  };
 
-  // Handle order item status updates
-  const handleOrderItemStatusUpdate = useCallback(async (orderId: string, itemId: string, newStatus: string) => {
-    try {
-      await apiClient.updateOrderItemStatus(orderId, itemId, newStatus);
-      refetch();
-    } catch (error) {
-      console.error('Failed to update order item status:', error);
-    }
-  }, [refetch]);
-
-  // Manual refresh
-  const handleRefresh = useCallback(() => {
-    refetch();
-  }, [refetch]);
-
-  // Toggle sound
-  const toggleSound = useCallback(() => {
-    const newEnabled = !soundEnabled;
-    setSoundEnabled(newEnabled);
-    kitchenSoundService.updateSettings({ enabled: newEnabled });
-  }, [soundEnabled]);
-
-  // Get time since last refresh
-  const getTimeSinceRefresh = useCallback(() => {
-    const seconds = Math.floor((Date.now() - lastRefresh.getTime()) / 1000);
-    return seconds < 60 ? `${seconds}s ago` : `${Math.floor(seconds / 60)}m ago`;
-  }, [lastRefresh]);
+  const activeOrders = orders.filter((o) => o.status !== "ready");
+  const readyOrders = orders.filter((o) => o.status === "ready");
 
   return (
-    <div className="h-screen flex flex-col bg-gray-50 touch-manipulation">
-      {/* Minimalistic Header */}
-      <div className="bg-white border-b border-gray-200 px-4 py-3 flex-shrink-0">
-        <div className="flex items-center justify-between">
-          {/* Title and User */}
-          <div className="flex items-center gap-3">
-            <ChefHat className="h-6 w-6 text-primary" />
-            <div>
-              <h1 className="text-xl font-bold">Kitchen Display</h1>
-              <p className="text-sm text-muted-foreground">
-                {user.first_name} • {getTimeSinceRefresh()}
-              </p>
+    <div className="min-h-screen bg-gradient-to-br from-slate-50 via-orange-50 to-red-50">
+      {/* HEADER */}
+      <div className="sticky top-0 z-20 bg-white/80 backdrop-blur-xl border-b border-slate-200/50 shadow-sm">
+        <div className="px-8 py-5">
+          <div className="flex items-center justify-between">
+            {/* Left - Title & Stats */}
+            <div className="flex items-center gap-6">
+              <div className="flex items-center gap-4">
+                <div className="w-14 h-14 bg-gradient-to-br from-orange-500 to-red-600 rounded-2xl flex items-center justify-center shadow-lg">
+                  <Flame className="w-8 h-8 text-white" />
+                </div>
+                <div>
+                  <h1 className="text-3xl font-bold bg-gradient-to-r from-orange-600 to-red-600 bg-clip-text text-transparent">
+                    Kitchen Display
+                  </h1>
+                  <p className="text-slate-600 text-sm mt-1">
+                    Chef {mockUser.first_name} • {stats.total} active orders
+                  </p>
+                </div>
+              </div>
+
+              {/* Stats Badges */}
+              <div className="flex items-center gap-3 ml-6 pl-6 border-l border-slate-200">
+                <div className="flex items-center gap-2 px-4 py-2 bg-blue-100 rounded-xl">
+                  <span className="text-2xl">🆕</span>
+                  <div className="text-center">
+                    <div className="text-sm text-slate-600">New</div>
+                    <div className="text-xl font-bold text-blue-700">
+                      {stats.confirmed}
+                    </div>
+                  </div>
+                </div>
+                <div className="flex items-center gap-2 px-4 py-2 bg-orange-100 rounded-xl">
+                  <span className="text-2xl">🔥</span>
+                  <div className="text-center">
+                    <div className="text-sm text-slate-600">Cooking</div>
+                    <div className="text-xl font-bold text-orange-700">
+                      {stats.preparing}
+                    </div>
+                  </div>
+                </div>
+                <div className="flex items-center gap-2 px-4 py-2 bg-emerald-100 rounded-xl">
+                  <span className="text-2xl">✅</span>
+                  <div className="text-center">
+                    <div className="text-sm text-slate-600">Ready</div>
+                    <div className="text-xl font-bold text-emerald-700">
+                      {stats.ready}
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* Right - Controls */}
+            <div className="flex items-center gap-3">
+              <button
+                onClick={() => setSoundEnabled(!soundEnabled)}
+                className="p-2.5 hover:bg-slate-100 rounded-lg transition-colors"
+                title={soundEnabled ? "Mute" : "Unmute"}
+              >
+                {soundEnabled ? (
+                  <Volume2 className="w-6 h-6 text-slate-600" />
+                ) : (
+                  <VolumeX className="w-6 h-6 text-slate-400" />
+                )}
+              </button>
+              <button
+                onClick={() => setShowSettings(!showSettings)}
+                className="p-2.5 hover:bg-slate-100 rounded-lg transition-colors"
+              >
+                <Clock className="w-6 h-6 text-slate-600" />
+              </button>
+              <button
+                onClick={() => (window.location.href = "/login")}
+                className="p-2.5 hover:bg-red-100 rounded-lg transition-colors"
+              >
+                <LogOut className="w-6 h-6 text-red-600" />
+              </button>
             </div>
           </div>
+        </div>
+      </div>
 
-          {/* Stats */}
-          <div className="hidden md:flex items-center gap-3 text-sm">
-            <Badge variant="secondary" className="bg-yellow-100 text-yellow-800">
-              {stats.newOrders} New
-            </Badge>
-            <Badge variant="secondary" className="bg-blue-100 text-blue-800">
-              {stats.preparing} Preparing
-            </Badge>
-            <Badge variant="secondary" className="bg-green-100 text-green-800">
-              {stats.ready} Ready
-            </Badge>
-            {stats.urgent > 0 && (
-              <Badge variant="destructive">
-                {stats.urgent} Urgent
-              </Badge>
-            )}
-          </div>
-
-          {/* Controls */}
-          <div className="flex items-center gap-2">
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={toggleSound}
-              className="h-10 w-10 p-0"
-            >
-              {soundEnabled ? 
-                <Volume2 className="h-4 w-4" /> : 
-                <VolumeX className="h-4 w-4 text-muted-foreground" />
-              }
-            </Button>
-            
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={handleRefresh}
-              disabled={isLoading}
-              className="h-10 w-10 p-0"
-            >
-              <RefreshCw className={cn(
-                "h-4 w-4",
-                isLoading && "animate-spin"
-              )} />
-            </Button>
-            
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={() => setShowSoundSettings(true)}
-              className="h-10 w-10 p-0"
-            >
-              <Settings className="h-4 w-4" />
-            </Button>
+      {/* Settings Overlay */}
+      {showSettings && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-2xl shadow-xl p-6 w-full max-w-sm">
+            <div className="flex items-center justify-between mb-6">
+              <h3 className="text-lg font-bold text-slate-900">
+                Sound Settings
+              </h3>
+              <button
+                onClick={() => setShowSettings(false)}
+                className="text-slate-400 hover:text-slate-600"
+              >
+                ✕
+              </button>
+            </div>
+            <div className="space-y-5">
+              <div className="flex items-center justify-between">
+                <span className="font-medium text-slate-900">
+                  Enable Sounds
+                </span>
+                <button
+                  onClick={() => setSoundEnabled(!soundEnabled)}
+                  className={`w-12 h-6 rounded-full transition-colors ${soundEnabled ? "bg-blue-600" : "bg-slate-300"}`}
+                >
+                  <div
+                    className={`w-5 h-5 rounded-full bg-white transition-transform ${soundEnabled ? "translate-x-6" : "translate-x-1"}`}
+                  />
+                </button>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-slate-900 mb-2">
+                  Volume
+                </label>
+                <input
+                  type="range"
+                  min="0"
+                  max="1"
+                  step="0.1"
+                  value={volume}
+                  onChange={(e) => setVolume(parseFloat(e.target.value))}
+                  className="w-full"
+                />
+              </div>
+              <div className="grid grid-cols-2 gap-2 pt-2">
+                <button
+                  onClick={() => playSound("new")}
+                  className="px-4 py-2 bg-slate-100 hover:bg-slate-200 rounded-lg font-medium text-sm transition-colors"
+                >
+                  Test New Order
+                </button>
+                <button
+                  onClick={() => playSound("ready")}
+                  className="px-4 py-2 bg-slate-100 hover:bg-slate-200 rounded-lg font-medium text-sm transition-colors"
+                >
+                  Test Ready
+                </button>
+              </div>
+            </div>
           </div>
         </div>
+      )}
 
-        {/* Mobile Stats */}
-        <div className="md:hidden flex items-center gap-2 mt-3">
-          <Badge variant="secondary" className="bg-yellow-100 text-yellow-800 text-xs">
-            {stats.newOrders} New
-          </Badge>
-          <Badge variant="secondary" className="bg-blue-100 text-blue-800 text-xs">
-            {stats.preparing} Preparing  
-          </Badge>
-          <Badge variant="secondary" className="bg-green-100 text-green-800 text-xs">
-            {stats.ready} Ready
-          </Badge>
-          {stats.urgent > 0 && (
-            <Badge variant="destructive" className="text-xs">
-              {stats.urgent} Urgent
-            </Badge>
+      {/* MAIN CONTENT */}
+      <div className="p-8 space-y-8">
+        {/* ACTIVE ORDERS */}
+        <div>
+          <div className="flex items-center justify-between mb-6">
+            <h2 className="text-2xl font-bold text-slate-900 flex items-center gap-3">
+              <ChefHat className="w-7 h-7 text-orange-600" />
+              Active Orders ({activeOrders.length})
+            </h2>
+            <button className="text-sm text-blue-600 hover:text-blue-700 font-semibold">
+              Refresh
+            </button>
+          </div>
+
+          {activeOrders.length === 0 ? (
+            <div className="text-center py-16">
+              <ChefHat className="w-16 h-16 text-slate-300 mx-auto mb-4" />
+              <p className="text-slate-600 text-lg font-semibold">
+                No active orders
+              </p>
+              <p className="text-slate-500">Kitchen is ready! 🎉</p>
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-6">
+              {activeOrders.map((order) => {
+                const urgency = getUrgency(order.created_at);
+                const waitTime = getWaitTime(order.created_at);
+
+                return (
+                  <div
+                    key={order.id}
+                    className={`rounded-2xl border-2 overflow-hidden shadow-lg hover:shadow-xl transition-all ${urgency.color}`}
+                  >
+                    {/* Card Header */}
+                    <div className="bg-gradient-to-r from-slate-900 to-slate-800 text-white p-5">
+                      <div className="flex items-start justify-between mb-3">
+                        <div>
+                          <h3 className="text-2xl font-bold">
+                            #{order.order_number}
+                          </h3>
+                          <p className="text-slate-300 text-sm mt-1">
+                            {order.customer_name || "Guest"}
+                          </p>
+                        </div>
+                        <div className="text-right">
+                          <div className="text-3xl">{urgency.icon}</div>
+                          <div className="text-xs font-bold mt-1 text-slate-300">
+                            {urgency.label}
+                          </div>
+                        </div>
+                      </div>
+                      <div className="flex items-center justify-between pt-3 border-t border-slate-700">
+                        <div className="text-sm">
+                          {order.order_type === "dine_in" && order.table && (
+                            <span>🪑 Table {order.table.table_number}</span>
+                          )}
+                          {order.order_type === "takeout" && (
+                            <span>📦 Takeout</span>
+                          )}
+                        </div>
+                        <div className="text-sm font-bold">{waitTime} min</div>
+                      </div>
+                    </div>
+
+                    {/* Items */}
+                    <div className="p-5 space-y-3">
+                      {order.items.map((item) => (
+                        <div
+                          key={item.id}
+                          className="p-3 bg-white/70 rounded-xl border border-slate-200"
+                        >
+                          <div className="flex items-start justify-between">
+                            <div className="flex-1">
+                              <div className="font-bold text-slate-900">
+                                {item.quantity}x {item.product.name}
+                              </div>
+                              {item.special_instructions && (
+                                <div className="text-xs text-orange-700 mt-1 bg-orange-50 p-1.5 rounded mt-2">
+                                  ⭐ {item.special_instructions}
+                                </div>
+                              )}
+                            </div>
+                            <div
+                              className={`px-3 py-1 rounded-lg text-xs font-bold ${
+                                item.status === "ready"
+                                  ? "bg-emerald-100 text-emerald-700"
+                                  : "bg-orange-100 text-orange-700"
+                              }`}
+                            >
+                              {item.status === "ready" ? "✅" : "🍳"}{" "}
+                              {item.status}
+                            </div>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+
+                    {/* Notes */}
+                    {order.notes && (
+                      <div className="px-5 pb-4">
+                        <div className="p-3 bg-blue-50 border border-blue-200 rounded-xl">
+                          <p className="text-sm text-blue-800">
+                            <strong>Notes:</strong> {order.notes}
+                          </p>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Actions */}
+                    <div className="px-5 pb-5 space-y-2">
+                      {order.status === "confirmed" && (
+                        <button
+                          onClick={() => {
+                            handleStartCooking(order.id);
+                            playSound("new");
+                          }}
+                          className="w-full px-4 py-3 bg-gradient-to-r from-orange-600 to-red-600 text-white rounded-xl font-bold hover:shadow-lg transition-all active:scale-95 flex items-center justify-center gap-2"
+                        >
+                          <Flame className="w-5 h-5" />
+                          Start Cooking
+                        </button>
+                      )}
+                      {order.status === "preparing" && (
+                        <button
+                          onClick={() => {
+                            handleMarkReady(order.id);
+                            playSound("ready");
+                          }}
+                          className="w-full px-4 py-3 bg-gradient-to-r from-emerald-600 to-green-600 text-white rounded-xl font-bold hover:shadow-lg transition-all active:scale-95 flex items-center justify-center gap-2"
+                        >
+                          <CheckCircle className="w-5 h-5" />
+                          Mark Ready
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
           )}
         </div>
 
-        {/* Auto-refresh indicator */}
-        <div className="flex items-center justify-between mt-2">
-          <div className="flex items-center gap-2 text-xs text-muted-foreground">
-            <div className={cn(
-              "w-2 h-2 rounded-full",
-              autoRefresh ? "bg-green-500 animate-pulse" : "bg-gray-300"
-            )} />
-            {autoRefresh ? "Auto-refreshing" : "Manual refresh"}
-            {error && (
-              <Badge variant="destructive" className="text-xs">
-                <AlertCircle className="h-3 w-3 mr-1" />
-                Connection Error
-              </Badge>
-            )}
-          </div>
-          
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={() => setAutoRefresh(!autoRefresh)}
-            className="h-6 px-2 text-xs"
-          >
-            {autoRefresh ? 'Disable Auto-refresh' : 'Enable Auto-refresh'}
-          </Button>
-        </div>
-      </div>
+        {/* READY ORDERS */}
+        {readyOrders.length > 0 && (
+          <div className="mt-12 pt-8 border-t-2 border-slate-200">
+            <h2 className="text-2xl font-bold text-slate-900 mb-6 flex items-center gap-3">
+              <CheckCircle className="w-7 h-7 text-emerald-600" />
+              Ready for Service ({readyOrders.length})
+            </h2>
 
-      {/* Main Content with Tabs */}
-      <div className="flex-1 overflow-hidden">
-        <Tabs value={selectedTab} onValueChange={setSelectedTab} className="h-full flex flex-col">
-          {/* Tab Navigation - Touch Optimized */}
-          <TabsList className="grid w-full grid-cols-2 h-14 mx-4 mt-4 mb-2">
-            <TabsTrigger value="active-orders" className="flex items-center gap-2 text-base font-medium">
-              <ChefHat className="h-4 w-4" />
-              Kitchen Orders
-              {stats.total > 0 && (
-                <Badge variant="secondary" className="ml-1">
-                  {stats.total}
-                </Badge>
-              )}
-            </TabsTrigger>
-            <TabsTrigger value="takeaway" className="flex items-center gap-2 text-base font-medium">
-              <Package className="h-4 w-4" />
-              Takeaway Ready
-            </TabsTrigger>
-          </TabsList>
-
-          {/* Active Orders Tab */}
-          <TabsContent value="active-orders" className="flex-1 overflow-auto px-4 pb-4">
-            {isLoading ? (
-              <div className="flex items-center justify-center h-64">
-                <div className="text-center">
-                  <div className="w-8 h-8 border-4 border-primary border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
-                  <p className="text-muted-foreground">Loading kitchen orders...</p>
+            <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-6">
+              {readyOrders.map((order) => (
+                <div
+                  key={order.id}
+                  className="rounded-2xl border-2 border-emerald-500 bg-emerald-50 shadow-lg overflow-hidden"
+                >
+                  <div className="bg-gradient-to-r from-emerald-600 to-green-600 text-white p-6 text-center">
+                    <div className="text-4xl font-bold mb-2">
+                      #{order.order_number}
+                    </div>
+                    <div className="text-xl font-semibold">
+                      {order.customer_name || "Guest"}
+                    </div>
+                    {order.order_type === "dine_in" && order.table && (
+                      <div className="text-sm mt-2 text-emerald-100">
+                        🪑 Table {order.table.table_number}
+                      </div>
+                    )}
+                  </div>
+                  <div className="p-5 text-center">
+                    <div className="text-5xl mb-4">✅</div>
+                    <p className="text-emerald-800 font-bold text-lg">
+                      Ready for pickup/serving
+                    </p>
+                    <button
+                      onClick={() => handleCompleteOrder(order.id)}
+                      className="mt-4 w-full px-4 py-2 bg-emerald-600 text-white rounded-lg font-bold hover:bg-emerald-700 transition-colors"
+                    >
+                      Completed
+                    </button>
+                  </div>
                 </div>
-              </div>
-            ) : orders.length === 0 ? (
-              <Card className="h-64 flex items-center justify-center">
-                <CardContent className="text-center">
-                  <ChefHat className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
-                  <h3 className="text-lg font-medium mb-2">No Active Orders</h3>
-                  <p className="text-muted-foreground">
-                    New orders will appear here automatically
-                  </p>
-                </CardContent>
-              </Card>
-            ) : (
-              <div className="space-y-6">
-                {/* New Orders Section */}
-                {ordersByStatus.confirmed.length > 0 && (
-                  <div>
-                    <h2 className="text-lg font-semibold text-gray-900 mb-4 flex items-center">
-                      <div className="w-3 h-3 bg-yellow-500 rounded-full mr-3 animate-pulse"></div>
-                      New Orders ({ordersByStatus.confirmed.length})
-                    </h2>
-                    <div className="grid gap-4 lg:grid-cols-2">
-                      {ordersByStatus.confirmed.map((order: Order) => (
-                        <EnhancedKitchenOrderCard
-                          key={order.id}
-                          order={order}
-                          onStatusUpdate={handleOrderStatusUpdate}
-                          onItemStatusUpdate={handleOrderItemStatusUpdate}
-                          isMinimalistic={true}
-                        />
-                      ))}
-                    </div>
-                  </div>
-                )}
-
-                {/* Preparing Orders Section */}
-                {ordersByStatus.preparing.length > 0 && (
-                  <div>
-                    <h2 className="text-lg font-semibold text-gray-900 mb-4 flex items-center">
-                      <div className="w-3 h-3 bg-blue-500 rounded-full mr-3"></div>
-                      Preparing ({ordersByStatus.preparing.length})
-                    </h2>
-                    <div className="grid gap-4 lg:grid-cols-2">
-                      {ordersByStatus.preparing.map((order: Order) => (
-                        <EnhancedKitchenOrderCard
-                          key={order.id}
-                          order={order}
-                          onStatusUpdate={handleOrderStatusUpdate}
-                          onItemStatusUpdate={handleOrderItemStatusUpdate}
-                          isMinimalistic={true}
-                        />
-                      ))}
-                    </div>
-                  </div>
-                )}
-
-                {/* Ready Orders Section */}
-                {ordersByStatus.ready.length > 0 && (
-                  <div>
-                    <h2 className="text-lg font-semibold text-gray-900 mb-4 flex items-center">
-                      <div className="w-3 h-3 bg-green-500 rounded-full mr-3"></div>
-                      Ready for Service ({ordersByStatus.ready.length})
-                    </h2>
-                    <div className="grid gap-4 lg:grid-cols-2">
-                      {ordersByStatus.ready.map((order: Order) => (
-                        <EnhancedKitchenOrderCard
-                          key={order.id}
-                          order={order}
-                          onStatusUpdate={handleOrderStatusUpdate}
-                          onItemStatusUpdate={handleOrderItemStatusUpdate}
-                          isMinimalistic={true}
-                        />
-                      ))}
-                    </div>
-                  </div>
-                )}
-              </div>
-            )}
-          </TabsContent>
-
-          {/* Takeaway Board Tab */}
-          <TabsContent value="takeaway" className="flex-1 overflow-auto px-4 pb-4">
-            <TakeawayBoard
-              autoRefresh={autoRefresh}
-              onOrderComplete={() => refetch()}
-            />
-          </TabsContent>
-        </Tabs>
+              ))}
+            </div>
+          </div>
+        )}
       </div>
-
-      {/* Sound Settings Modal */}
-      {showSoundSettings && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-          <SoundSettings
-            className="max-w-md w-full"
-            onClose={() => setShowSoundSettings(false)}
-          />
-        </div>
-      )}
     </div>
   );
 }

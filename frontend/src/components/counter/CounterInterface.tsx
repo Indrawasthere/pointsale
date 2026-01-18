@@ -1,453 +1,522 @@
-import { useState, useEffect } from 'react'
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import apiClient from '@/api/client'
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
-import { Button } from '@/components/ui/button'
-import { Input } from '@/components/ui/input'
-import { Badge } from '@/components/ui/badge'
-import { 
-  Plus, 
-  Minus, 
-  ShoppingCart, 
-  CreditCard, 
+import { useState } from "react";
+import {
+  Plus,
+  Minus,
+  ShoppingCart,
+  CreditCard,
   DollarSign,
   Check,
   Clock,
-  Table as TableIcon,
+  Table2,
   Search,
   Package,
   Car,
   Users,
   Receipt,
-  History
-} from 'lucide-react'
-import type { Product, Category, DiningTable, Order } from '@/types'
+  AlertCircle,
+  Banknote,
+  Smartphone,
+  MapPin,
+} from "lucide-react";
 
-interface CartItem {
-  product: Product
-  quantity: number
-  special_instructions?: string
-}
+// Mock data
+const mockCategories = [
+  { id: "1", name: "Beverages", color: "#3b82f6", icon: "" },
+  { id: "2", name: "Main Course", color: "#3b82f6", icon: "" },
+  { id: "3", name: "Appetizers", color: "#3b82f6", icon: "" },
+  { id: "4", name: "Desserts", color: "#3b82f6", icon: "" },
+];
 
-interface CreateOrderRequest {
-  table_id?: string
-  customer_name?: string
-  order_type: 'dine_in' | 'takeout' | 'delivery'
-  items: Array<{
-    product_id: string
-    quantity: number
-    special_instructions?: string
-  }>
-  notes?: string
-}
+const mockProducts = [
+  {
+    id: "1",
+    category_id: "1",
+    name: "Dadar Gulung",
+    price: 3500,
+    description: "Perpaduan kulit lembut dan fla yang lumer",
+    is_available: true,
+    preparation_time: 2,
+  },
+  {
+    id: "2",
+    category_id: "1",
+    name: "Risol Mayo",
+    price: 4500,
+    description: "Risol dengan mayo yang lezat",
+    is_available: true,
+    preparation_time: 3,
+  },
+  {
+    id: "3",
+    category_id: "2",
+    name: "Grilled Salmon",
+    price: 35000,
+    description: "Saus lemon yang lezat dan pedas",
+    is_available: true,
+    preparation_time: 20,
+  },
+  {
+    id: "4",
+    category_id: "2",
+    name: "Beef Steak",
+    price: 25000,
+    description: "Daging sapi yang lezat",
+    is_available: true,
+    preparation_time: 25,
+  },
+  {
+    id: "5",
+    category_id: "3",
+    name: "Salad Buah",
+    price: 12000,
+    description: "Perpaduan buah yang segar",
+    is_available: true,
+    preparation_time: 5,
+  },
+  {
+    id: "6",
+    category_id: "3",
+    name: "Kue Coklat",
+    price: 8000,
+    description: "Coklat lumer yang manis",
+    is_available: true,
+    preparation_time: 8,
+  },
+  {
+    id: "7",
+    category_id: "4",
+    name: "Vanilla Ice Cream",
+    price: 5000,
+    description: "Es krim vanilla dengan saus coklat",
+    is_available: true,
+    preparation_time: 2,
+  },
+  {
+    id: "8",
+    category_id: "4",
+    name: "Strawberry Ice Cream",
+    price: 6500,
+    description: "Es krim strawberry dengan saus coklat",
+    is_available: true,
+    preparation_time: 1,
+  },
+];
 
-interface ProcessPaymentRequest {
-  payment_method: 'cash' | 'credit_card' | 'debit_card' | 'digital_wallet'
-  amount: number
-  reference_number?: string
-}
+const mockTables = [
+  {
+    id: "1",
+    table_number: "1",
+    seating_capacity: 2,
+    location: "Main Hall",
+    is_occupied: false,
+  },
+  {
+    id: "2",
+    table_number: "2",
+    seating_capacity: 2,
+    location: "Main Hall",
+    is_occupied: false,
+  },
+  {
+    id: "3",
+    table_number: "3",
+    seating_capacity: 4,
+    location: "Main Hall",
+    is_occupied: true,
+  },
+  {
+    id: "4",
+    table_number: "4",
+    seating_capacity: 4,
+    location: "Main Hall",
+    is_occupied: false,
+  },
+];
+
+const mockOrders = [
+  {
+    id: "1",
+    order_number: "ORD001",
+    customer_name: "John Doe",
+    total_amount: 45000,
+    order_type: "dine_in",
+    status: "ready",
+    table: { table_number: "3" },
+    items: [],
+  },
+  {
+    id: "2",
+    order_number: "ORD002",
+    customer_name: "Jane Smith",
+    total_amount: 32500,
+    order_type: "takeout",
+    status: "ready",
+    items: [],
+  },
+];
 
 export function CounterInterface() {
-  const [activeTab, setActiveTab] = useState<'create' | 'payment'>('create')
-  const [orderType, setOrderType] = useState<'dine_in' | 'takeout' | 'delivery'>('dine_in')
-  const [selectedCategory, setSelectedCategory] = useState<string>('all')
-  const [selectedTable, setSelectedTable] = useState<DiningTable | null>(null)
-  const [customerName, setCustomerName] = useState('')
-  const [cart, setCart] = useState<CartItem[]>([])
-  const [orderNotes, setOrderNotes] = useState('')
-  const [searchTerm, setSearchTerm] = useState('')
-  
-  // Payment states
-  const [selectedOrder, setSelectedOrder] = useState<Order | null>(null)
-  const [paymentMethod, setPaymentMethod] = useState<'cash' | 'credit_card' | 'debit_card' | 'digital_wallet'>('cash')
-  const [paymentAmount, setPaymentAmount] = useState('')
-  const [referenceNumber, setReferenceNumber] = useState('')
-  
-  const queryClient = useQueryClient()
+  const [activeTab, setActiveTab] = useState("create");
+  const [orderType, setOrderType] = useState("takeout");
+  const [selectedCategory, setSelectedCategory] = useState("all");
+  const [selectedTable, setSelectedTable] = useState(null);
+  const [customerName, setCustomerName] = useState("");
+  const [cart, setCart] = useState([]);
+  const [orderNotes, setOrderNotes] = useState("");
+  const [searchTerm, setSearchTerm] = useState("");
+  const [selectedOrder, setSelectedOrder] = useState(null);
+  const [paymentMethod, setPaymentMethod] = useState("cash");
+  const [paymentAmount, setPaymentAmount] = useState("");
+  const [referenceNumber, setReferenceNumber] = useState("");
+  const [isProcessing, setIsProcessing] = useState(false);
 
-  // Fetch categories
-  const { data: categories = [] } = useQuery({
-    queryKey: ['categories'],
-    queryFn: () => apiClient.getCategories().then(res => res.data)
-  })
+  const filteredProducts = mockProducts.filter((p) => {
+    const matchCategory =
+      selectedCategory === "all" || p.category_id === selectedCategory;
+    const matchSearch = p.name.toLowerCase().includes(searchTerm.toLowerCase());
+    return matchCategory && matchSearch;
+  });
 
-  // Fetch products
-  const { data: products = [] } = useQuery({
-    queryKey: ['products', selectedCategory],
-    queryFn: () => {
-      if (selectedCategory === 'all') {
-        return apiClient.getProducts().then(res => res.data)
-      } else {
-        return apiClient.getProductsByCategory(selectedCategory).then(res => res.data)
-      }
-    }
-  })
+  const availableTables = mockTables.filter((t) => !t.is_occupied);
 
-  // Fetch available tables 
-  const { data: tables = [] } = useQuery({
-    queryKey: ['tables'],
-    queryFn: () => apiClient.getTables().then(res => res.data)
-  })
-
-  // Fetch pending orders for payment processing
-  const { data: pendingOrders = [] } = useQuery({
-    queryKey: ['pendingOrders'],
-    queryFn: () => apiClient.getOrders({ status: ['ready', 'served'] }).then(res => res.data)
-  })
-
-  // Create order mutation (counter endpoint - all order types)
-  const createOrderMutation = useMutation({
-    mutationFn: (orderData: CreateOrderRequest) => 
-      apiClient.createCounterOrder(orderData),
-    onSuccess: () => {
-      // Reset form
-      setCart([])
-      setSelectedTable(null)
-      setCustomerName('')
-      setOrderNotes('')
-      queryClient.invalidateQueries({ queryKey: ['orders'] })
-      queryClient.invalidateQueries({ queryKey: ['tables'] })
-    }
-  })
-
-  // Process payment mutation
-  const processPaymentMutation = useMutation({
-    mutationFn: ({ orderId, paymentData }: { orderId: string, paymentData: ProcessPaymentRequest }) => 
-      apiClient.processCounterPayment(orderId, paymentData),
-    onSuccess: () => {
-      // Reset payment form
-      setSelectedOrder(null)
-      setPaymentAmount('')
-      setReferenceNumber('')
-      queryClient.invalidateQueries({ queryKey: ['orders'] })
-      queryClient.invalidateQueries({ queryKey: ['pendingOrders'] })
-    }
-  })
-
-  // Filter products based on search
-  const filteredProducts = products.filter(product =>
-    product.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    (product.description?.toLowerCase().includes(searchTerm.toLowerCase()) ?? false)
-  )
-
-  // Available tables (for dine-in)
-  const availableTables = tables.filter(table => !table.is_occupied)
-
-  const addToCart = (product: Product) => {
-    const existingItem = cart.find(item => item.product.id === product.id)
-    
-    if (existingItem) {
-      setCart(cart.map(item =>
-        item.product.id === product.id
-          ? { ...item, quantity: item.quantity + 1 }
-          : item
-      ))
+  const addToCart = (product) => {
+    const existing = cart.find((item) => item.product.id === product.id);
+    if (existing) {
+      setCart(
+        cart.map((item) =>
+          item.product.id === product.id
+            ? { ...item, quantity: item.quantity + 1 }
+            : item,
+        ),
+      );
     } else {
-      setCart([...cart, { product, quantity: 1 }])
+      setCart([...cart, { product, quantity: 1 }]);
     }
-  }
+  };
 
-  const removeFromCart = (productId: string) => {
-    const existingItem = cart.find(item => item.product.id === productId)
-    
-    if (existingItem && existingItem.quantity > 1) {
-      setCart(cart.map(item =>
-        item.product.id === productId
-          ? { ...item, quantity: item.quantity - 1 }
-          : item
-      ))
+  const removeFromCart = (productId) => {
+    const existing = cart.find((item) => item.product.id === productId);
+    if (existing && existing.quantity > 1) {
+      setCart(
+        cart.map((item) =>
+          item.product.id === productId
+            ? { ...item, quantity: item.quantity - 1 }
+            : item,
+        ),
+      );
     } else {
-      setCart(cart.filter(item => item.product.id !== productId))
+      setCart(cart.filter((item) => item.product.id !== productId));
     }
-  }
+  };
 
   const getTotalAmount = () => {
-    return cart.reduce((total, item) => total + (item.product.price * item.quantity), 0)
-  }
+    return cart.reduce(
+      (sum, item) => sum + item.product.price * item.quantity,
+      0,
+    );
+  };
 
   const handleCreateOrder = () => {
-    if (cart.length === 0) return
-    if (orderType === 'dine_in' && !selectedTable) return
+    if (cart.length === 0 || (orderType === "dine_in" && !selectedTable))
+      return;
+    setIsProcessing(true);
+    setTimeout(() => {
+      console.log("Order created");
+      setIsProcessing(false);
+      setCart([]);
+      setSelectedTable(null);
+      setCustomerName("");
+      setOrderNotes("");
+    }, 1500);
+  };
 
-    const orderData: CreateOrderRequest = {
-      table_id: orderType === 'dine_in' ? selectedTable?.id : undefined,
-      customer_name: customerName || undefined,
-      order_type: orderType,
-      items: cart.map(item => ({
-        product_id: item.product.id,
-        quantity: item.quantity,
-        special_instructions: item.special_instructions
-      })),
-      notes: orderNotes || undefined
-    }
+  const handlePayment = () => {
+    if (!selectedOrder || !paymentAmount) return;
+    setIsProcessing(true);
+    setTimeout(() => {
+      console.log("Payment processed");
+      setIsProcessing(false);
+      setSelectedOrder(null);
+      setPaymentAmount("");
+      setReferenceNumber("");
+    }, 1500);
+  };
 
-    createOrderMutation.mutate(orderData)
-  }
+  const formatCurrency = (amount) => {
+    return new Intl.NumberFormat("id-ID", {
+      style: "currency",
+      currency: "IDR",
+    }).format(amount);
+  };
 
-  const handleProcessPayment = () => {
-    if (!selectedOrder || !paymentAmount) return
+  const orderTypeConfig = {
+    dine_in: {
+      icon: Users,
+      label: "Dine-In",
+      color: "from-blue-600 to-blue-500",
+    },
+    takeout: {
+      icon: Package,
+      label: "Takeout",
+      color: "from-green-700 to-green-600",
+    },
+    delivery: {
+      icon: Car,
+      label: "Delivery",
+      color: "from-red-600 to-red-500",
+    },
+  };
 
-    const paymentData: ProcessPaymentRequest = {
-      payment_method: paymentMethod,
-      amount: parseFloat(paymentAmount),
-      reference_number: referenceNumber || undefined
-    }
-
-    processPaymentMutation.mutate({ 
-      orderId: selectedOrder.id, 
-      paymentData 
-    })
-  }
-
-  const formatCurrency = (amount: number) => {
-    return new Intl.NumberFormat('en-US', {
-      style: 'currency',
-      currency: 'USD'
-    }).format(amount)
-  }
-
-  const getOrderTypeIcon = (type: string) => {
-    switch (type) {
-      case 'dine_in': return <Users className="w-4 h-4" />
-      case 'takeout': return <Package className="w-4 h-4" />
-      case 'delivery': return <Car className="w-4 h-4" />
-      default: return <ShoppingCart className="w-4 h-4" />
-    }
-  }
-
-  const getOrderTypeBadge = (type: string) => {
-    const configs = {
-      dine_in: { label: 'Dine-In', color: 'bg-blue-100 text-blue-800' },
-      takeout: { label: 'Takeout', color: 'bg-green-100 text-green-800' },
-      delivery: { label: 'Delivery', color: 'bg-purple-100 text-purple-800' }
-    }
-    const config = configs[type as keyof typeof configs] || configs.dine_in
-    return <Badge className={config.color}>{config.label}</Badge>
-  }
+  const config = orderTypeConfig[orderType];
+  const OrderIcon = config.icon;
 
   return (
-    <div className="flex h-screen bg-background">
-      {/* Left Sidebar - Products and Orders */}
-      <div className="w-2/3 border-r border-border overflow-hidden flex flex-col">
-        {/* Header with Tabs */}
-        <div className="p-4 border-b border-border bg-card">
-          <div className="flex items-center justify-between mb-4">
-            <div>
-              <h1 className="text-2xl font-bold">Counter / Checkout</h1>
-              <p className="text-muted-foreground">Create orders and process payments</p>
-            </div>
-            <div className="flex gap-2">
-              <Button
-                variant={activeTab === 'create' ? 'default' : 'outline'}
-                size="sm"
-                onClick={() => setActiveTab('create')}
-              >
-                <Plus className="w-4 h-4 mr-1" />
-                Create Order
-              </Button>
-              <Button
-                variant={activeTab === 'payment' ? 'default' : 'outline'}
-                size="sm"
-                onClick={() => setActiveTab('payment')}
-              >
-                <CreditCard className="w-4 h-4 mr-1" />
-                Process Payment
-              </Button>
-            </div>
-          </div>
-
-          {activeTab === 'create' && (
-            <>
-              {/* Order Type Selection */}
-              <div className="flex gap-2 mb-4">
-                <Button
-                  variant={orderType === 'dine_in' ? 'default' : 'outline'}
-                  size="sm"
-                  onClick={() => setOrderType('dine_in')}
-                >
-                  <Users className="w-4 h-4 mr-1" />
-                  Dine-In
-                </Button>
-                <Button
-                  variant={orderType === 'takeout' ? 'default' : 'outline'}
-                  size="sm"
-                  onClick={() => setOrderType('takeout')}
-                >
-                  <Package className="w-4 h-4 mr-1" />
-                  Takeout
-                </Button>
-                <Button
-                  variant={orderType === 'delivery' ? 'default' : 'outline'}
-                  size="sm"
-                  onClick={() => setOrderType('delivery')}
-                >
-                  <Car className="w-4 h-4 mr-1" />
-                  Delivery
-                </Button>
+    <div className="min-h-screen flex bg-gradient-to-br from-slate-50 via-blue-50 to-purple-50">
+      {/* LEFT SIDE - PRODUCTS */}
+      <div className="flex-1 flex flex-col overflow-hidden border-r border-slate-200/50">
+        {/* Header */}
+        <div className="sticky top-0 z-20 bg-white/80 backdrop-blur-xl border-b border-slate-200/50 shadow-sm">
+          <div className="p-6 space-y-5">
+            {/* Title */}
+            <div className="flex items-center justify-between">
+              <div>
+                <h1 className="text-3xl font-bold bg-black bg-clip-text text-transparent">
+                  Counter / Checkout
+                </h1>
+                <p className="text-slate-600 text-sm mt-2">
+                  Create orders & process payments
+                </p>
               </div>
-
-              {/* Search */}
-              <div className="relative mb-4">
-                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-muted-foreground h-4 w-4" />
-                <Input
-                  placeholder="Search products..."
-                  value={searchTerm}
-                  onChange={(e) => setSearchTerm(e.target.value)}
-                  className="pl-10"
-                />
-              </div>
-
-              {/* Category Filter */}
-              <div className="flex gap-2 overflow-x-auto">
-                <Button
-                  variant={selectedCategory === 'all' ? 'default' : 'outline'}
-                  size="sm"
-                  onClick={() => setSelectedCategory('all')}
+              <div className="flex gap-3">
+                <button
+                  onClick={() => setActiveTab("create")}
+                  className={`px-5 py-2.5 rounded-xl font-semibold transition-all ${
+                    activeTab === "create"
+                      ? "bg-gradient-to-r from-blue-600 to-blue-500 text-white shadow-lg"
+                      : "bg-slate-200 text-slate-700 hover:bg-slate-300"
+                  }`}
                 >
-                  All Items
-                </Button>
-                {categories.map(category => (
-                  <Button
-                    key={category.id}
-                    variant={selectedCategory === category.id ? 'default' : 'outline'}
-                    size="sm"
-                    onClick={() => setSelectedCategory(category.id)}
+                  Create
+                </button>
+                <button
+                  onClick={() => setActiveTab("payment")}
+                  className={`px-5 py-2.5 rounded-xl font-semibold transition-all ${
+                    activeTab === "payment"
+                      ? "bg-gradient-to-r from-blue-600 to-blue-500 text-white shadow-lg"
+                      : "bg-slate-200 text-slate-700 hover:bg-slate-300"
+                  }`}
+                >
+                  Payment
+                </button>
+              </div>
+            </div>
+
+            {activeTab === "create" && (
+              <>
+                {/* Order Type Selection */}
+                <div className="flex gap-3">
+                  {Object.entries(orderTypeConfig).map(([type, cfg]) => {
+                    const Icon = cfg.icon;
+                    return (
+                      <button
+                        key={type}
+                        onClick={() => setOrderType(type)}
+                        className={`flex-1 flex items-center justify-center gap-2 px-4 py-3 rounded-xl font-semibold transition-all ${
+                          orderType === type
+                            ? `bg-gradient-to-r ${cfg.color} text-white shadow-lg`
+                            : "bg-slate-200 text-slate-700 hover:bg-slate-300"
+                        }`}
+                      >
+                        <Icon className="w-5 h-5" />
+                        {cfg.label}
+                      </button>
+                    );
+                  })}
+                </div>
+
+                {/* Search */}
+                <div className="relative">
+                  <Search className="absolute left-4 top-1/2 transform -translate-y-1/2 text-slate-400 w-5 h-5" />
+                  <input
+                    type="text"
+                    placeholder="Search products..."
+                    value={searchTerm}
+                    onChange={(e) => setSearchTerm(e.target.value)}
+                    className="w-full pl-12 pr-4 py-3 bg-slate-100 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 focus:bg-white transition-all font-medium"
+                  />
+                </div>
+
+                {/* Categories */}
+                <div className="flex gap-2 overflow-x-auto pb-2 -mx-2 px-2 scrollbar-hide">
+                  <button
+                    onClick={() => setSelectedCategory("all")}
+                    className={`px-4 py-2.5 rounded-xl text-sm font-semibold whitespace-nowrap transition-all ${
+                      selectedCategory === "all"
+                        ? "bg-gradient-to-r from-blue-600 to-blue-500 text-white shadow-lg"
+                        : "bg-slate-200 text-slate-700 hover:bg-slate-300"
+                    }`}
                   >
-                    {category.name}
-                  </Button>
-                ))}
-              </div>
-            </>
-          )}
+                    All Items
+                  </button>
+                  {mockCategories.map((cat) => (
+                    <button
+                      key={cat.id}
+                      onClick={() => setSelectedCategory(cat.id)}
+                      className={`px-4 py-2.5 rounded-xl text-sm font-semibold whitespace-nowrap transition-all flex items-center gap-2 ${
+                        selectedCategory === cat.id
+                          ? "text-white shadow-lg"
+                          : "bg-slate-200 text-slate-700 hover:bg-slate-300"
+                      }`}
+                      style={{
+                        background:
+                          selectedCategory === cat.id
+                            ? `linear-gradient(135deg, ${cat.color} 0%, ${cat.color}dd 100%)`
+                            : undefined,
+                      }}
+                    >
+                      <span>{cat.icon}</span>
+                      {cat.name}
+                    </button>
+                  ))}
+                </div>
+              </>
+            )}
+          </div>
         </div>
 
-        {/* Content Area */}
-        <div className="flex-1 overflow-y-auto p-4">
-          {activeTab === 'create' ? (
-            /* Products Grid */
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-              {filteredProducts.map(product => {
-                const cartItem = cart.find(item => item.product.id === product.id)
-                return (
-                  <Card key={product.id} className="hover:shadow-md transition-shadow">
-                    <CardHeader className="pb-3">
-                      <div className="flex items-start justify-between">
-                        <div>
-                          <CardTitle className="text-lg leading-tight">{product.name}</CardTitle>
-                          {product.description && (
-                            <CardDescription className="text-sm mt-1">
-                              {product.description.substring(0, 60)}
-                              {product.description.length > 60 ? '...' : ''}
-                            </CardDescription>
-                          )}
-                        </div>
-                        <div className="text-lg font-bold text-primary">
-                          {formatCurrency(product.price)}
-                        </div>
-                      </div>
-                    </CardHeader>
-                    <CardContent className="pt-0">
-                      <div className="flex items-center justify-between">
-                        <div className="flex items-center gap-2">
-                          {product.preparation_time > 0 && (
-                            <Badge variant="outline" className="text-xs">
-                              <Clock className="w-3 h-3 mr-1" />
-                              {product.preparation_time}min
-                            </Badge>
-                          )}
-                          {!product.is_available && (
-                            <Badge variant="secondary" className="text-xs">
-                              Unavailable
-                            </Badge>
-                          )}
-                        </div>
+        {/* MAIN CONTENT */}
+        <div className="flex-1 overflow-y-auto p-6">
+          {activeTab === "create" ? (
+            // Products Grid
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
+              {filteredProducts.map((product) => {
+                const cartItem = cart.find(
+                  (item) => item.product.id === product.id,
+                );
+                const category = mockCategories.find(
+                  (c) => c.id === product.category_id,
+                );
 
-                        {product.is_available && (
-                          <div className="flex items-center gap-2">
-                            {cartItem ? (
-                              <div className="flex items-center gap-2">
-                                <Button
-                                  variant="outline"
-                                  size="sm"
-                                  onClick={() => removeFromCart(product.id)}
-                                >
-                                  <Minus className="h-4 w-4" />
-                                </Button>
-                                <span className="w-8 text-center font-medium">
-                                  {cartItem.quantity}
-                                </span>
-                                <Button
-                                  variant="outline"
-                                  size="sm"
-                                  onClick={() => addToCart(product)}
-                                >
-                                  <Plus className="h-4 w-4" />
-                                </Button>
-                              </div>
-                            ) : (
-                              <Button
-                                variant="default"
-                                size="sm"
-                                onClick={() => addToCart(product)}
-                              >
-                                <Plus className="h-4 w-4 mr-1" />
-                                Add
-                              </Button>
-                            )}
+                return (
+                  <div
+                    key={product.id}
+                    className="group bg-white rounded-2xl overflow-hidden border border-slate-200/50 hover:shadow-lg hover:border-blue-300/50 transition-all duration-200"
+                  >
+                    <div className="p-5">
+                      <div className="flex items-start justify-between mb-4">
+                        <div className="flex-1">
+                          <h3 className="font-bold text-slate-900 text-base group-hover:text-blue-600 transition-colors">
+                            {product.name}
+                          </h3>
+                          <p className="text-slate-600 text-xs mt-1">
+                            {product.description}
+                          </p>
+                        </div>
+                        <div className="text-2xl ml-3">{category?.icon}</div>
+                      </div>
+
+                      <div className="flex items-center justify-between mb-4">
+                        <div className="text-2xl font-bold text-slate-900">
+                          Rp {product.price.toLocaleString()}
+                        </div>
+                        {product.preparation_time > 0 && (
+                          <div className="flex items-center gap-1.5 px-2.5 py-1.5 bg-orange-100 rounded-lg">
+                            <Clock className="w-3.5 h-3.5 text-orange-600" />
+                            <span className="text-xs text-orange-700 font-semibold">
+                              {product.preparation_time}m
+                            </span>
                           </div>
                         )}
                       </div>
-                    </CardContent>
-                  </Card>
-                )
+
+                      {!cartItem ? (
+                        <button
+                          onClick={() => addToCart(product)}
+                          className="w-full flex items-center justify-center gap-2 px-4 py-3 bg-gradient-to-r from-blue-600 to-blue-500 text-white rounded-xl font-semibold hover:shadow-lg transition-all active:scale-95"
+                        >
+                          <Plus className="w-5 h-5" />
+                          Add
+                        </button>
+                      ) : (
+                        <div className="flex items-center gap-2 bg-slate-100 rounded-xl p-1.5">
+                          <button
+                            onClick={() => removeFromCart(product.id)}
+                            className="flex-1 flex items-center justify-center p-2 hover:bg-white rounded-lg transition-colors"
+                          >
+                            <Minus className="w-4 h-4 text-slate-600" />
+                          </button>
+                          <span className="flex-1 text-center font-bold text-slate-900 text-lg">
+                            {cartItem.quantity}
+                          </span>
+                          <button
+                            onClick={() => addToCart(product)}
+                            className="flex-1 flex items-center justify-center p-2 hover:bg-white rounded-lg transition-colors"
+                          >
+                            <Plus className="w-4 h-4 text-blue-600" />
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                );
               })}
             </div>
           ) : (
-            /* Payment Processing - Orders List */
+            // Payment Orders List
             <div className="space-y-4">
-              <h3 className="text-lg font-semibold mb-4">Orders Ready for Payment</h3>
-              {pendingOrders.length === 0 ? (
-                <div className="text-center py-8 text-muted-foreground">
-                  <Receipt className="w-12 h-12 mx-auto mb-3 opacity-50" />
-                  <p>No orders ready for payment</p>
+              <h3 className="text-2xl font-bold text-slate-900 mb-6">
+                Orders Ready for Payment
+              </h3>
+              {mockOrders.length === 0 ? (
+                <div className="flex flex-col items-center justify-center h-96 text-center">
+                  <Receipt className="w-16 h-16 text-slate-300 mb-4" />
+                  <p className="text-slate-600 font-semibold text-lg">
+                    No orders ready
+                  </p>
                 </div>
               ) : (
-                pendingOrders.map(order => (
-                  <Card 
-                    key={order.id} 
-                    className={`cursor-pointer transition-all ${
-                      selectedOrder?.id === order.id ? 'ring-2 ring-primary' : 'hover:shadow-md'
-                    }`}
+                mockOrders.map((order) => (
+                  <div
+                    key={order.id}
                     onClick={() => {
-                      setSelectedOrder(order)
-                      setPaymentAmount(order.total_amount.toString())
+                      setSelectedOrder(order);
+                      setPaymentAmount(order.total_amount.toString());
                     }}
+                    className={`p-5 rounded-2xl border-2 cursor-pointer transition-all ${
+                      selectedOrder?.id === order.id
+                        ? "border-blue-500 bg-blue-50 shadow-lg"
+                        : "border-slate-200/50 bg-white hover:shadow-md hover:border-blue-300/50"
+                    }`}
                   >
-                    <CardContent className="p-4">
-                      <div className="flex items-center justify-between">
-                        <div className="flex items-center gap-3">
-                          {getOrderTypeIcon(order.order_type)}
-                          <div>
-                            <div className="font-semibold">Order #{order.order_number}</div>
-                            <div className="text-sm text-muted-foreground">
-                              {order.customer_name && `${order.customer_name} • `}
-                              {order.table?.table_number && `Table ${order.table.table_number} • `}
-                              {order.items?.length || 0} items
-                            </div>
-                          </div>
-                        </div>
-                        <div className="text-right">
-                          <div className="text-lg font-bold">{formatCurrency(order.total_amount)}</div>
-                          <div className="flex items-center gap-2">
-                            {getOrderTypeBadge(order.order_type)}
-                            <Badge variant="outline" className="text-xs">
-                              {order.status}
-                            </Badge>
-                          </div>
+                    <div className="flex items-center justify-between mb-3">
+                      <div className="flex items-center gap-3">
+                        <OrderIcon className="w-5 h-5 text-slate-600" />
+                        <div>
+                          <h4 className="font-bold text-slate-900">
+                            Order #{order.order_number}
+                          </h4>
+                          <p className="text-xs text-slate-600 mt-0.5">
+                            {order.customer_name && `${order.customer_name}`}
+                            {order.table &&
+                              ` • Table ${order.table.table_number}`}
+                          </p>
                         </div>
                       </div>
-                    </CardContent>
-                  </Card>
+                      <div className="text-right">
+                        <div className="text-xl font-bold text-slate-900">
+                          Rp {order.total_amount.toLocaleString()}
+                        </div>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-2 text-xs">
+                      <div className="px-3 py-1 bg-blue-600 text-blue-500 font-semibold rounded-lg">
+                        {order.order_type === "dine_in" ? "Dine-In" : "Takeout"}
+                      </div>
+                      <div className="px-3 py-1 bg-blue-600 text-blue-700 font-semibold rounded-lg">
+                        Ready
+                      </div>
+                    </div>
+                  </div>
                 ))
               )}
             </div>
@@ -455,266 +524,324 @@ export function CounterInterface() {
         </div>
       </div>
 
-      {/* Right Sidebar */}
-      <div className="w-1/3 flex flex-col bg-card">
-        {activeTab === 'create' ? (
-          /* Create Order Interface */
+      {/* RIGHT SIDE - ORDER/PAYMENT SUMMARY */}
+      <div className="w-96 flex flex-col bg-white border-l border-slate-200/50 shadow-xl">
+        {activeTab === "create" ? (
+          // CREATE ORDER MODE
           <>
             {/* Table/Customer Selection */}
-            <div className="p-4 border-b border-border">
-              {orderType === 'dine_in' ? (
-                <>
-                  <h3 className="font-semibold mb-3 flex items-center">
-                    <TableIcon className="w-4 h-4 mr-2" />
-                    Select Table
-                  </h3>
-                  <div className="grid grid-cols-3 gap-2 mb-4">
-                    {availableTables.slice(0, 9).map(table => (
-                      <Button
-                        key={table.id}
-                        variant={selectedTable?.id === table.id ? 'default' : 'outline'}
-                        size="sm"
-                        onClick={() => setSelectedTable(table)}
-                        className="h-12"
-                      >
-                        {table.table_number}
-                        <span className="text-xs block">
-                          {table.seating_capacity} seats
-                        </span>
-                      </Button>
-                    ))}
-                  </div>
-                </>
-              ) : (
-                <div className="mb-4">
-                  <h3 className="font-semibold mb-2">Customer Information</h3>
+            {orderType === "dine_in" && (
+              <div className="p-6 border-b border-slate-200/50">
+                <h3 className="font-bold text-slate-900 mb-4 flex items-center gap-2">
+                  <Table2 className="w-5 h-5" />
+                  Select Table
+                </h3>
+                <div className="grid grid-cols-3 gap-2">
+                  {availableTables.map((table) => (
+                    <button
+                      key={table.id}
+                      onClick={() => setSelectedTable(table)}
+                      className={`p-3 rounded-xl font-semibold transition-all ${
+                        selectedTable?.id === table.id
+                          ? "bg-gradient-to-r from-blue-600 to-blue-500 text-white shadow-lg"
+                          : "bg-slate-100 text-slate-700 hover:bg-slate-200"
+                      }`}
+                    >
+                      <div className="text-lg">T{table.table_number}</div>
+                      <div className="text-xs mt-1">
+                        {table.seating_capacity}s
+                      </div>
+                    </button>
+                  ))}
                 </div>
-              )}
-              
-              <Input
-                placeholder={orderType === 'dine_in' ? 'Customer name (optional)' : 'Customer name'}
+                {selectedTable && (
+                  <div className="mt-4 p-3 bg-blue-50 border border-blue-200 rounded-xl">
+                    <p className="text-sm font-semibold text-blue-900">
+                      Selected: Table {selectedTable.table_number}
+                    </p>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* Customer Name */}
+            <div className="p-6 border-b border-slate-200/50">
+              <label className="block text-sm font-bold text-slate-900 mb-3">
+                {orderType === "dine_in" ? "Customer Name" : "Customer Name"}
+              </label>
+              <input
+                type="text"
+                placeholder="Enter customer name..."
                 value={customerName}
                 onChange={(e) => setCustomerName(e.target.value)}
+                className="w-full px-4 py-3 bg-slate-100 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 focus:bg-white transition-all font-medium"
               />
             </div>
 
-            {/* Cart */}
-            <div className="flex-1 overflow-y-auto">
-              <div className="p-4">
-                <h3 className="font-semibold mb-3 flex items-center">
-                  <ShoppingCart className="w-4 h-4 mr-2" />
-                  Order Items ({cart.length})
-                </h3>
-                
-                {cart.length === 0 ? (
-                  <div className="text-center py-8 text-muted-foreground">
-                    <ShoppingCart className="w-12 h-12 mx-auto mb-3 opacity-50" />
-                    <p>No items in order</p>
-                    <p className="text-sm">Add items from the menu to get started</p>
+            {/* Cart Items */}
+            <div className="flex-1 overflow-y-auto p-6 space-y-3">
+              {cart.length === 0 ? (
+                <div className="flex flex-col items-center justify-center h-full py-12 text-center">
+                  <ShoppingCart className="w-14 h-14 text-slate-300 mb-4" />
+                  <p className="text-slate-600 font-semibold">Cart is empty</p>
+                  <p className="text-slate-500 text-sm mt-2">
+                    Add items from menu
+                  </p>
+                </div>
+              ) : (
+                cart.map((item) => (
+                  <div
+                    key={item.product.id}
+                    className="flex items-center justify-between p-4 bg-slate-50 rounded-xl border border-slate-200/50 hover:shadow-md transition-all"
+                  >
+                    <div className="flex-1 min-w-0">
+                      <p className="font-semibold text-slate-900 text-sm">
+                        {item.product.name}
+                      </p>
+                      <p className="text-xs text-slate-600 mt-1">
+                        Rp {item.product.price.toLocaleString()} ×{" "}
+                        {item.quantity}
+                      </p>
+                    </div>
+                    <div className="flex items-center gap-3 ml-4 flex-shrink-0">
+                      <p className="font-bold text-slate-900 min-w-[80px] text-right">
+                        Rp{" "}
+                        {(item.product.price * item.quantity).toLocaleString()}
+                      </p>
+                      <button
+                        onClick={() => removeFromCart(item.product.id)}
+                        className="p-1.5 hover:bg-slate-200 rounded-lg transition-colors"
+                      >
+                        <Minus className="w-4 h-4 text-slate-600" />
+                      </button>
+                    </div>
                   </div>
-                ) : (
-                  <div className="space-y-3">
-                    {cart.map(item => (
-                      <div key={item.product.id} className="flex items-center justify-between p-3 bg-muted/50 rounded-lg">
-                        <div className="flex-1 min-w-0">
-                          <div className="font-medium truncate">{item.product.name}</div>
-                          <div className="text-sm text-muted-foreground">
-                            {formatCurrency(item.product.price)} × {item.quantity}
-                          </div>
-                        </div>
-                        <div className="flex items-center gap-2 ml-2">
-                          <div className="font-medium">
-                            {formatCurrency(item.product.price * item.quantity)}
-                          </div>
-                          <div className="flex items-center gap-1">
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              onClick={() => removeFromCart(item.product.id)}
-                            >
-                              <Minus className="h-3 w-3" />
-                            </Button>
-                            <span className="w-6 text-center text-sm">{item.quantity}</span>
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              onClick={() => addToCart(item.product)}
-                            >
-                              <Plus className="h-3 w-3" />
-                            </Button>
-                          </div>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                )}
-
-                {/* Order Notes */}
-                {cart.length > 0 && (
-                  <div className="mt-4">
-                    <label className="text-sm font-medium">Order Notes</label>
-                    <Input
-                      placeholder="Special requests or notes..."
-                      value={orderNotes}
-                      onChange={(e) => setOrderNotes(e.target.value)}
-                      className="mt-1"
-                    />
-                  </div>
-                )}
-              </div>
+                ))
+              )}
             </div>
 
-            {/* Order Summary and Actions */}
+            {/* Order Notes */}
             {cart.length > 0 && (
-              <div className="p-4 border-t border-border bg-card">
-                <div className="space-y-3">
-                  <div className="flex justify-between text-lg font-semibold">
-                    <span>Total:</span>
-                    <span>{formatCurrency(getTotalAmount())}</span>
+              <div className="px-6 pb-4">
+                <label className="block text-xs font-bold text-slate-900 mb-2">
+                  Special Instructions
+                </label>
+                <textarea
+                  placeholder="Any special requests..."
+                  value={orderNotes}
+                  onChange={(e) => setOrderNotes(e.target.value)}
+                  className="w-full px-4 py-2.5 bg-slate-100 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 transition-all resize-none font-medium"
+                  rows="2"
+                />
+              </div>
+            )}
+
+            {/* Footer - Summary */}
+            <div className="sticky bottom-0 bg-gradient-to-t from-white via-white to-transparent p-6 border-t border-slate-200/50 space-y-4">
+              {cart.length > 0 ? (
+                <>
+                  <div className="p-5 bg-gradient-to-br from-blue-50 to-purple-50 rounded-2xl border border-blue-200/50">
+                    <div className="space-y-2 mb-3">
+                      <div className="flex justify-between text-sm">
+                        <span className="text-slate-700 font-medium">
+                          Subtotal:
+                        </span>
+                        <span className="font-semibold text-slate-900">
+                          Rp {getTotalAmount().toLocaleString()}
+                        </span>
+                      </div>
+                    </div>
+                    <div className="border-t border-slate-200 pt-3">
+                      <div className="flex justify-between items-center text-lg font-bold">
+                        <span className="text-slate-900">Total:</span>
+                        <span className="bg-gradient-to-r from-blue-600 to-blue-500 bg-clip-text text-transparent text-xl">
+                          Rp {getTotalAmount().toLocaleString()}
+                        </span>
+                      </div>
+                    </div>
                   </div>
-                  
-                  <Button
-                    className="w-full"
-                    size="lg"
+
+                  <button
                     onClick={handleCreateOrder}
                     disabled={
-                      cart.length === 0 || 
-                      (orderType === 'dine_in' && !selectedTable) ||
-                      createOrderMutation.isPending
+                      (!selectedTable && orderType === "dine_in") ||
+                      isProcessing
                     }
+                    className={`w-full flex items-center justify-center gap-2 px-6 py-4 rounded-xl font-bold text-white transition-all active:scale-95 text-base ${
+                      !selectedTable && orderType === "dine_in"
+                        ? "bg-slate-300 cursor-not-allowed"
+                        : "bg-gradient-to-r from-blue-600 to-blue-500 hover:shadow-lg"
+                    }`}
                   >
-                    {createOrderMutation.isPending ? (
+                    {isProcessing ? (
                       <>
-                        <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin mr-2" />
-                        Creating Order...
+                        <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                        Creating...
                       </>
                     ) : (
                       <>
-                        <Check className="w-4 h-4 mr-2" />
-                        Create {orderType === 'dine_in' ? 'Dine-In' : orderType === 'takeout' ? 'Takeout' : 'Delivery'} Order
+                        <Check className="w-5 h-5" />
+                        Create Order
                       </>
                     )}
-                  </Button>
+                  </button>
+                </>
+              ) : (
+                <div className="text-center py-6 text-slate-600">
+                  <p className="text-sm font-medium">No items selected</p>
                 </div>
-              </div>
-            )}
+              )}
+            </div>
           </>
         ) : (
-          /* Payment Processing Interface */
+          // PAYMENT MODE
           <>
             {selectedOrder ? (
               <>
-                <div className="p-4 border-b border-border">
-                  <h3 className="font-semibold mb-3">Payment Details</h3>
-                  <div className="space-y-2 text-sm">
-                    <div className="flex justify-between">
-                      <span>Order:</span>
-                      <span>#{selectedOrder.order_number}</span>
+                <div className="p-6 border-b border-slate-200/50">
+                  <h3 className="font-bold text-slate-900 mb-4">
+                    Payment Details
+                  </h3>
+                  <div className="space-y-3">
+                    <div className="flex justify-between items-center">
+                      <span className="text-slate-700 font-medium">Order:</span>
+                      <span className="font-bold text-slate-900">
+                        #{selectedOrder.order_number}
+                      </span>
                     </div>
                     {selectedOrder.customer_name && (
-                      <div className="flex justify-between">
-                        <span>Customer:</span>
-                        <span>{selectedOrder.customer_name}</span>
+                      <div className="flex justify-between items-center">
+                        <span className="text-slate-700 font-medium">
+                          Customer:
+                        </span>
+                        <span className="font-bold text-slate-900">
+                          {selectedOrder.customer_name}
+                        </span>
                       </div>
                     )}
-                    <div className="flex justify-between font-semibold text-lg">
-                      <span>Total:</span>
-                      <span>{formatCurrency(selectedOrder.total_amount)}</span>
+                    <div className="border-t border-slate-200 pt-3">
+                      <div className="flex justify-between items-center text-lg font-bold">
+                        <span>Total:</span>
+                        <span className="bg-gradient-to-r from-blue-600 to-blue-500 bg-clip-text text-transparent">
+                          Rp {selectedOrder.total_amount.toLocaleString()}
+                        </span>
+                      </div>
                     </div>
                   </div>
                 </div>
 
-                <div className="p-4 space-y-4">
+                <div className="flex-1 overflow-y-auto p-6 space-y-5">
+                  {/* Payment Method */}
                   <div>
-                    <label className="text-sm font-medium mb-2 block">Payment Method</label>
-                    <div className="grid grid-cols-2 gap-2">
-                      <Button
-                        variant={paymentMethod === 'cash' ? 'default' : 'outline'}
-                        size="sm"
-                        onClick={() => setPaymentMethod('cash')}
-                      >
-                        <DollarSign className="w-4 h-4 mr-1" />
-                        Cash
-                      </Button>
-                      <Button
-                        variant={paymentMethod === 'credit_card' ? 'default' : 'outline'}
-                        size="sm"
-                        onClick={() => setPaymentMethod('credit_card')}
-                      >
-                        <CreditCard className="w-4 h-4 mr-1" />
-                        Credit
-                      </Button>
-                      <Button
-                        variant={paymentMethod === 'debit_card' ? 'default' : 'outline'}
-                        size="sm"
-                        onClick={() => setPaymentMethod('debit_card')}
-                      >
-                        <CreditCard className="w-4 h-4 mr-1" />
-                        Debit
-                      </Button>
-                      <Button
-                        variant={paymentMethod === 'digital_wallet' ? 'default' : 'outline'}
-                        size="sm"
-                        onClick={() => setPaymentMethod('digital_wallet')}
-                      >
-                        Digital
-                      </Button>
+                    <label className="block text-sm font-bold text-slate-900 mb-3">
+                      Payment Method
+                    </label>
+                    <div className="grid grid-cols-2 gap-2.5">
+                      {[
+                        { id: "cash", label: "Cash", icon: Banknote },
+                        {
+                          id: "credit_card",
+                          label: "Credit Card",
+                          icon: CreditCard,
+                        },
+                        {
+                          id: "debit_card",
+                          label: "Debit Card",
+                          icon: CreditCard,
+                        },
+                        {
+                          id: "digital_wallet",
+                          label: "E-Wallet",
+                          icon: Smartphone,
+                        },
+                      ].map((method) => {
+                        const Icon = method.icon;
+                        return (
+                          <button
+                            key={method.id}
+                            onClick={() => setPaymentMethod(method.id)}
+                            className={`flex items-center justify-center gap-2 px-4 py-3 rounded-xl font-semibold transition-all ${
+                              paymentMethod === method.id
+                                ? "bg-gradient-to-r from-blue-600 to-blue-500 text-white shadow-lg"
+                                : "bg-slate-100 text-slate-700 hover:bg-slate-200"
+                            }`}
+                          >
+                            <Icon className="w-4 h-4" />
+                            {method.label}
+                          </button>
+                        );
+                      })}
                     </div>
                   </div>
 
+                  {/* Payment Amount */}
                   <div>
-                    <label className="text-sm font-medium mb-1 block">Payment Amount</label>
-                    <Input
+                    <label className="block text-sm font-bold text-slate-900 mb-2">
+                      Amount to Pay
+                    </label>
+                    <input
                       type="number"
-                      step="0.01"
-                      placeholder="0.00"
+                      placeholder="0"
                       value={paymentAmount}
                       onChange={(e) => setPaymentAmount(e.target.value)}
+                      className="w-full px-4 py-3 bg-slate-100 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 focus:bg-white transition-all font-medium text-lg"
                     />
                   </div>
 
-                  {paymentMethod !== 'cash' && (
+                  {/* Reference Number */}
+                  {paymentMethod !== "cash" && (
                     <div>
-                      <label className="text-sm font-medium mb-1 block">Reference Number</label>
-                      <Input
-                        placeholder="Transaction reference"
+                      <label className="block text-sm font-bold text-slate-900 mb-2">
+                        Reference Number
+                      </label>
+                      <input
+                        type="text"
+                        placeholder="Transaction reference..."
                         value={referenceNumber}
                         onChange={(e) => setReferenceNumber(e.target.value)}
+                        className="w-full px-4 py-3 bg-slate-100 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 focus:bg-white transition-all font-medium"
                       />
                     </div>
                   )}
+                </div>
 
-                  <Button
-                    className="w-full"
-                    size="lg"
-                    onClick={handleProcessPayment}
-                    disabled={!paymentAmount || processPaymentMutation.isPending}
+                {/* Payment Button */}
+                <div className="sticky bottom-0 bg-gradient-to-t from-white via-white to-transparent p-6 border-t border-slate-200/50">
+                  <button
+                    onClick={handlePayment}
+                    disabled={!paymentAmount || isProcessing}
+                    className={`w-full flex items-center justify-center gap-2 px-6 py-4 rounded-xl font-bold text-white transition-all active:scale-95 text-base ${
+                      !paymentAmount
+                        ? "bg-slate-300 cursor-not-allowed"
+                        : "bg-gradient-to-r from-emerald-600 to-green-600 hover:shadow-lg"
+                    }`}
                   >
-                    {processPaymentMutation.isPending ? (
+                    {isProcessing ? (
                       <>
-                        <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin mr-2" />
+                        <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin" />
                         Processing...
                       </>
                     ) : (
                       <>
-                        <CreditCard className="w-4 h-4 mr-2" />
+                        <Check className="w-5 h-5" />
                         Process Payment
                       </>
                     )}
-                  </Button>
+                  </button>
                 </div>
               </>
             ) : (
-              <div className="flex-1 flex items-center justify-center text-muted-foreground">
-                <div className="text-center">
-                  <CreditCard className="w-12 h-12 mx-auto mb-3 opacity-50" />
-                  <p>Select an order to process payment</p>
-                </div>
+              <div className="flex-1 flex flex-col items-center justify-center text-center">
+                <CreditCard className="w-16 h-16 text-slate-300 mb-4" />
+                <p className="text-slate-600 font-semibold">Select an order</p>
+                <p className="text-slate-500 text-sm mt-2">
+                  from the list to process payment
+                </p>
               </div>
             )}
           </>
         )}
       </div>
     </div>
-  )
+  );
 }

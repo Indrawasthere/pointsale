@@ -22,10 +22,10 @@ func main() {
 
 	// Database configuration
 	dbConfig := database.Config{
-		Host:     getEnv("DB_HOST", "postgres"),
+		Host:     getEnv("DB_HOST", "localhost"),
 		Port:     getEnv("DB_PORT", "5432"),
-		User:     getEnv("DB_USER", "postgres"),
-		Password: getEnv("DB_PASSWORD", "postgres123"),
+		User:     getEnv("DB_USER", "spkmb_admin"),
+		Password: getEnv("DB_PASSWORD", "admin123"),
 		DBName:   getEnv("DB_NAME", "pos_system"),
 		SSLMode:  getEnv("DB_SSLMODE", "disable"),
 	}

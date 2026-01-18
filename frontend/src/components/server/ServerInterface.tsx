@@ -1,685 +1,631 @@
-import { useState } from 'react'
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import apiClient from '@/api/client'
-import { toastHelpers } from '@/lib/toast-helpers'
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
-import { Button } from '@/components/ui/button'
-import { Input } from '@/components/ui/input'
-import { Badge } from '@/components/ui/badge'
-import { 
-  Plus, 
-  Minus, 
-  ShoppingCart, 
-  Users, 
+import { useState } from "react";
+import {
+  Plus,
+  Minus,
+  ShoppingCart,
+  Users,
   User,
   Check,
   Clock,
-  Table as TableIcon,
+  Table2,
   Search,
-  Settings,
-  Package
-} from 'lucide-react'
-import type { Product, DiningTable } from '@/types'
+  LogOut,
+  AlertCircle,
+  MapPin,
+} from "lucide-react";
 
-interface CartItem {
-  product: Product
-  quantity: number
-  special_instructions?: string
-}
+// Mock data
+const mockCategories = [
+  { id: "1", name: "Beverages", color: "#3b82f6", icon: "" },
+  { id: "2", name: "Main Course", color: "#3b82f6", icon: "" },
+  { id: "3", name: "Appetizers", color: "#3b82f6", icon: "" },
+  { id: "4", name: "Desserts", color: "#3b82f6", icon: "" },
+  { id: "5", name: "Soups", color: "#3b82f6", icon: "" },
+];
 
-interface CreateOrderRequest {
-  order_type: 'dine_in' | 'takeout' | 'delivery'
-  table_id: string
-  customer_name?: string
-  items: Array<{
-    product_id: string
-    quantity: number
-    special_instructions?: string
-  }>
-  notes?: string
-}
+const mockProducts = [
+  {
+    id: "1",
+    category_id: "1",
+    name: "Es Teh Manis",
+    price: 5000,
+    description: "Refreshing iced tea",
+    is_available: true,
+    preparation_time: 2,
+  },
+  {
+    id: "2",
+    category_id: "1",
+    name: "Jus Jeruk",
+    price: 8000,
+    description: "Freshly squeezed",
+    is_available: true,
+    preparation_time: 3,
+  },
+  {
+    id: "3",
+    category_id: "2",
+    name: "Salmon Grilled",
+    price: 32000,
+    description: "With lemon butter sauce",
+    is_available: true,
+    preparation_time: 20,
+  },
+  {
+    id: "4",
+    category_id: "2",
+    name: "Steak Daging",
+    price: 50000,
+    description: "Medium rare perfection",
+    is_available: true,
+    preparation_time: 25,
+  },
+  {
+    id: "5",
+    category_id: "3",
+    name: "Salad Sayur",
+    price: 24000,
+    description: "Classic caesar with croutons",
+    is_available: true,
+    preparation_time: 5,
+  },
+  {
+    id: "6",
+    category_id: "3",
+    name: "Udang Goreng",
+    price: 25000,
+    description: "Chilled & seasoned",
+    is_available: true,
+    preparation_time: 8,
+  },
+  {
+    id: "7",
+    category_id: "4",
+    name: "Kue Coklat",
+    price: 20000,
+    description: "Rich dark chocolate",
+    is_available: true,
+    preparation_time: 2,
+  },
+  {
+    id: "8",
+    category_id: "4",
+    name: "Ice Cream",
+    price: 5000,
+    description: "Various flavors available",
+    is_available: true,
+    preparation_time: 1,
+  },
+];
+
+const mockTables = [
+  {
+    id: "1",
+    table_number: "1",
+    seating_capacity: 2,
+    location: "Main Hall",
+    is_occupied: false,
+  },
+  {
+    id: "2",
+    table_number: "2",
+    seating_capacity: 2,
+    location: "Main Hall",
+    is_occupied: false,
+  },
+  {
+    id: "3",
+    table_number: "3",
+    seating_capacity: 4,
+    location: "Main Hall",
+    is_occupied: true,
+  },
+  {
+    id: "4",
+    table_number: "4",
+    seating_capacity: 4,
+    location: "Main Hall",
+    is_occupied: false,
+  },
+  {
+    id: "5",
+    table_number: "5",
+    seating_capacity: 6,
+    location: "VIP Area",
+    is_occupied: false,
+  },
+  {
+    id: "6",
+    table_number: "6",
+    seating_capacity: 6,
+    location: "VIP Area",
+    is_occupied: true,
+  },
+  {
+    id: "7",
+    table_number: "7",
+    seating_capacity: 4,
+    location: "Outdoor",
+    is_occupied: false,
+  },
+  {
+    id: "8",
+    table_number: "8",
+    seating_capacity: 4,
+    location: "Outdoor",
+    is_occupied: true,
+  },
+];
 
 export function ServerInterface() {
-  const [selectedCategory, setSelectedCategory] = useState<string>('all')
-  const [selectedTable, setSelectedTable] = useState<DiningTable | null>(null)
-  const [customerName, setCustomerName] = useState('')
-  const [cart, setCart] = useState<CartItem[]>([])
-  const [orderNotes, setOrderNotes] = useState('')
-  const [searchTerm, setSearchTerm] = useState('')
-  const [showTableView, setShowTableView] = useState(false)
-  
-  const queryClient = useQueryClient()
+  const [selectedCategory, setSelectedCategory] = useState("1");
+  const [selectedTable, setSelectedTable] = useState(null);
+  const [cart, setCart] = useState([]);
+  const [customerName, setCustomerName] = useState("");
+  const [orderNotes, setOrderNotes] = useState("");
+  const [searchTerm, setSearchTerm] = useState("");
+  const [showTableView, setShowTableView] = useState(false);
+  const [isProcessing, setIsProcessing] = useState(false);
 
-  // Fetch categories
-  const { data: categories = [] } = useQuery({
-    queryKey: ['categories'],
-    queryFn: async () => {
-      try {
-        const response = await apiClient.getCategories()
-        return response.data || []
-      } catch (error) {
-        console.error('Failed to fetch categories:', error)
-        return []
-      }
-    }
-  })
+  const filteredProducts = mockProducts.filter((p) => {
+    const matchCategory =
+      selectedCategory === "all" || p.category_id === selectedCategory;
+    const matchSearch = p.name.toLowerCase().includes(searchTerm.toLowerCase());
+    return matchCategory && matchSearch;
+  });
 
-  // Fetch products
-  const { data: products = [] } = useQuery({
-    queryKey: ['products', selectedCategory],
-    queryFn: async () => {
-      try {
-        let response
-        if (selectedCategory === 'all') {
-          response = await apiClient.getProducts()
-        } else {
-          response = await apiClient.getProductsByCategory(selectedCategory)
-        }
-        return response.data || []
-      } catch (error) {
-        console.error('Failed to fetch products:', error)
-        return []
-      }
-    }
-  })
+  const availableTables = mockTables.filter((t) => !t.is_occupied);
 
-  // Fetch available tables (not occupied)
-  const { data: tables = [] } = useQuery({
-    queryKey: ['tables'],
-    queryFn: async () => {
-      try {
-        const response = await apiClient.getTables()
-        return response.data || []
-      } catch (error) {
-        console.error('Failed to fetch tables:', error)
-        return []
-      }
-    }
-  })
-
-  // Fetch active orders to show table status
-  const { data: activeOrders = [] } = useQuery({
-    queryKey: ['active-orders'],
-    queryFn: async () => {
-      try {
-        const response = await apiClient.getOrders({ status: 'pending,confirmed,preparing,ready' })
-        return response.data || []
-      } catch (error) {
-        console.error('Failed to fetch active orders:', error)
-        return []
-      }
-    }
-  })
-
-  // Create order mutation (server endpoint - dine-in only)
-  const createOrderMutation = useMutation({
-    mutationFn: (orderData: CreateOrderRequest) => 
-      apiClient.createServerOrder(orderData),
-    onSuccess: (data) => {
-      const orderNumber = data.data?.order_number
-      // Reset form
-      setCart([])
-      setSelectedTable(null)
-      setCustomerName('')
-      setOrderNotes('')
-      
-      // Refresh data
-      queryClient.invalidateQueries({ queryKey: ['orders'] })
-      queryClient.invalidateQueries({ queryKey: ['active-orders'] })
-      queryClient.invalidateQueries({ queryKey: ['tables'] })
-      
-      toastHelpers.orderCreated(orderNumber)
-    },
-    onError: (error: any) => {
-      toastHelpers.apiError('Create order', error)
-    }
-  })
-
-  // Filter products based on search
-  const filteredProducts = products.filter(product =>
-    product.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    (product.description?.toLowerCase().includes(searchTerm.toLowerCase()) ?? false)
-  )
-
-  // Helper function to get table status
-  const getTableStatus = (table: DiningTable) => {
-    // Ensure activeOrders is always an array
-    const orders = Array.isArray(activeOrders) ? activeOrders : []
-    const hasActiveOrder = orders.some(order => order.table_id === table.id)
-    
-    if (table.is_occupied && hasActiveOrder) {
-      return { status: 'occupied', label: 'Occupied', color: 'bg-red-100 text-red-800 border-red-200' }
-    } else if (hasActiveOrder) {
-      return { status: 'pending', label: 'Order Pending', color: 'bg-yellow-100 text-yellow-800 border-yellow-200' }
-    } else if (table.is_occupied) {
-      return { status: 'seated', label: 'Seated', color: 'bg-blue-100 text-blue-800 border-blue-200' }
+  const addToCart = (product) => {
+    const existing = cart.find((item) => item.product.id === product.id);
+    if (existing) {
+      setCart(
+        cart.map((item) =>
+          item.product.id === product.id
+            ? { ...item, quantity: item.quantity + 1 }
+            : item,
+        ),
+      );
     } else {
-      return { status: 'available', label: 'Available', color: 'bg-green-100 text-green-800 border-green-200' }
+      setCart([...cart, { product, quantity: 1 }]);
     }
-  }
+  };
 
-  // Available tables (not occupied or ready for new orders)
-  const availableTables = tables.filter(table => !table.is_occupied)
-  
-  // All tables with status for restaurant view
-  const tablesWithStatus = tables.map(table => {
-    const orders = Array.isArray(activeOrders) ? activeOrders : []
-    return {
-      ...table,
-      statusInfo: getTableStatus(table),
-      activeOrder: orders.find(order => order.table_id === table.id)
-    }
-  })
-
-  const addToCart = (product: Product) => {
-    const existingItem = cart.find(item => item.product.id === product.id)
-    
-    if (existingItem) {
-      setCart(cart.map(item =>
-        item.product.id === product.id
-          ? { ...item, quantity: item.quantity + 1 }
-          : item
-      ))
+  const removeFromCart = (productId) => {
+    const existing = cart.find((item) => item.product.id === productId);
+    if (existing && existing.quantity > 1) {
+      setCart(
+        cart.map((item) =>
+          item.product.id === productId
+            ? { ...item, quantity: item.quantity - 1 }
+            : item,
+        ),
+      );
     } else {
-      setCart([...cart, { product, quantity: 1 }])
+      setCart(cart.filter((item) => item.product.id !== productId));
     }
-  }
-
-  const removeFromCart = (productId: string) => {
-    const existingItem = cart.find(item => item.product.id === productId)
-    
-    if (existingItem && existingItem.quantity > 1) {
-      setCart(cart.map(item =>
-        item.product.id === productId
-          ? { ...item, quantity: item.quantity - 1 }
-          : item
-      ))
-    } else {
-      setCart(cart.filter(item => item.product.id !== productId))
-    }
-  }
+  };
 
   const getTotalAmount = () => {
-    return cart.reduce((total, item) => total + (item.product.price * item.quantity), 0)
-  }
+    return cart.reduce(
+      (sum, item) => sum + item.product.price * item.quantity,
+      0,
+    );
+  };
 
   const handleCreateOrder = () => {
-    if (!selectedTable || cart.length === 0) return
+    if (!selectedTable || cart.length === 0) return;
+    setIsProcessing(true);
+    setTimeout(() => {
+      console.log("Order created:", {
+        table: selectedTable,
+        items: cart,
+        customerName,
+        notes: orderNotes,
+      });
+      setIsProcessing(false);
+      setCart([]);
+      setSelectedTable(null);
+      setCustomerName("");
+      setOrderNotes("");
+    }, 1500);
+  };
 
-    const orderData: CreateOrderRequest = {
-      order_type: 'dine_in',
-      table_id: selectedTable.id,
-      customer_name: customerName || undefined,
-      items: cart.map(item => ({
-        product_id: item.product.id,
-        quantity: item.quantity,
-        special_instructions: item.special_instructions
-      })),
-      notes: orderNotes || undefined
-    }
-
-    createOrderMutation.mutate(orderData)
-  }
-
-  const formatCurrency = (amount: number) => {
-    return new Intl.NumberFormat('en-US', {
-      style: 'currency',
-      currency: 'USD'
-    }).format(amount)
-  }
+  const formatCurrency = (amount) => {
+    return new Intl.NumberFormat("id-ID", {
+      style: "currency",
+      currency: "IDR",
+    }).format(amount);
+  };
 
   return (
-    <div className="flex flex-col lg:flex-row h-screen bg-background">
-      {/* Left Sidebar - Categories and Products */}
-      <div className="flex-1 lg:w-2/3 border-r border-border overflow-hidden flex flex-col">
-        {/* Header */}
-        <div className="p-3 sm:p-4 border-b border-border bg-card">
-          <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 sm:gap-4 mb-3 sm:mb-4">
-            <div className="min-w-0 flex-1">
-              <h1 className="text-lg sm:text-xl lg:text-2xl font-bold flex items-center truncate">
-                <span className="hidden sm:inline">🍽️ Server Station</span>
-                <span className="sm:hidden">🍽️ Server</span>
-              </h1>
-              <p className="text-xs sm:text-sm text-muted-foreground mt-1 hidden sm:block">Take orders for your tables • Provide excellent service</p>
-              <p className="text-xs text-muted-foreground mt-1 sm:hidden">Dine-in orders</p>
+    <div className="min-h-screen flex bg-gradient-to-br from-slate-50 via-blue-50 to-purple-50">
+      {/* LEFT SIDE - PRODUCTS */}
+      <div className="flex-1 flex flex-col overflow-hidden border-r border-slate-200/50">
+        {/* Header Section */}
+        <div className="sticky top-0 z-20 bg-white/80 backdrop-blur-xl border-b border-slate-200/50 shadow-sm">
+          <div className="p-6 space-y-5">
+            {/* Title & Badges */}
+            <div className="flex items-center justify-between">
+              <div>
+                <h1 className="text-3xl font-bold bg-black bg-clip-text text-transparent">
+                  Server Station
+                </h1>
+                <p className="text-slate-600 text-sm mt-2">
+                  Take orders & manage tables
+                </p>
+              </div>
+              <div className="flex items-center gap-3">
+                <div className="px-4 py-2 bg-blue-100 text-blue-700 text-xs font-bold rounded-full flex items-center gap-2">
+                  <Users className="w-4 h-4" />
+                  Dine-In
+                </div>
+                <div className="px-4 py-2 bg-emerald-100 text-emerald-700 text-xs font-bold rounded-full">
+                  {availableTables.length} Available
+                </div>
+              </div>
             </div>
-            <div className="flex items-center gap-2 flex-shrink-0">
-              <Badge variant="secondary" className="bg-blue-100 text-blue-800 text-xs px-2 py-1">
-                <Users className="w-3 h-3 sm:w-4 sm:h-4 mr-1" />
-                <span className="hidden sm:inline">Dine-In Service</span>
-                <span className="sm:hidden">Dine-In</span>
-              </Badge>
-              {Array.isArray(activeOrders) && activeOrders.length > 0 && (
-                <Badge variant="outline" className="bg-yellow-50 text-yellow-700 border-yellow-200 text-xs px-2 py-1">
-                  {activeOrders.length} <span className="hidden sm:inline">Active Orders</span><span className="sm:hidden">Orders</span>
-                </Badge>
-              )}
+
+            {/* Search Bar */}
+            <div className="relative">
+              <Search className="absolute left-4 top-1/2 transform -translate-y-1/2 text-slate-400 w-5 h-5" />
+              <input
+                type="text"
+                placeholder="Search products..."
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                className="w-full pl-12 pr-4 py-3 bg-slate-100 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 focus:bg-white transition-all text-sm font-medium"
+              />
             </div>
-          </div>
 
-          {/* Search */}
-          <div className="relative mb-3 sm:mb-4">
-            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-muted-foreground h-4 w-4" />
-            <Input
-              placeholder="Search products..."
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-              className="pl-10 h-10 sm:h-11 text-sm sm:text-base touch-manipulation"
-            />
-          </div>
-
-          {/* Category Filter */}
-          <div className="flex gap-2 overflow-x-auto pb-2 scrollbar-hide">
-            <Button
-              variant={selectedCategory === 'all' ? 'default' : 'outline'}
-              size="sm"
-              onClick={() => setSelectedCategory('all')}
-              className="whitespace-nowrap min-h-[44px] px-4 text-xs sm:text-sm touch-manipulation flex-shrink-0"
-            >
-              All Items
-            </Button>
-            {categories.map(category => (
-              <Button
-                key={category.id}
-                variant={selectedCategory === category.id ? 'default' : 'outline'}
-                size="sm"
-                onClick={() => setSelectedCategory(category.id)}
-                className="whitespace-nowrap min-h-[44px] px-4 text-xs sm:text-sm touch-manipulation flex-shrink-0"
+            {/* Category Filter */}
+            <div className="flex gap-2 overflow-x-auto pb-2 -mx-2 px-2 scrollbar-hide">
+              <button
+                onClick={() => setSelectedCategory("all")}
+                className={`px-4 py-2.5 rounded-xl text-sm font-semibold whitespace-nowrap transition-all ${
+                  selectedCategory === "all"
+                    ? "bg-gradient-to-r from-blue-600 to-blue-500 text-white shadow-lg"
+                    : "bg-slate-200 text-slate-700 hover:bg-slate-300"
+                }`}
               >
-                {category.name}
-              </Button>
-            ))}
+                All Items
+              </button>
+              {mockCategories.map((cat) => (
+                <button
+                  key={cat.id}
+                  onClick={() => setSelectedCategory(cat.id)}
+                  className={`px-4 py-2.5 rounded-xl text-sm font-semibold whitespace-nowrap transition-all flex items-center gap-2 ${
+                    selectedCategory === cat.id
+                      ? "text-white shadow-lg"
+                      : "bg-slate-200 text-slate-700 hover:bg-slate-300"
+                  }`}
+                  style={{
+                    background:
+                      selectedCategory === cat.id
+                        ? `linear-gradient(135deg, ${cat.color} 0%, ${cat.color}dd 100%)`
+                        : undefined,
+                  }}
+                >
+                  <span>{cat.icon}</span>
+                  {cat.name}
+                </button>
+              ))}
+            </div>
           </div>
         </div>
 
         {/* Products Grid */}
-        <div className="flex-1 overflow-y-auto p-2 sm:p-4">
-          <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-3 sm:gap-4">
-            {filteredProducts.map(product => {
-              const cartItem = cart.find(item => item.product.id === product.id)
-              return (
-                <Card key={product.id} className="hover:shadow-md active:scale-95 transition-all duration-150 touch-manipulation">
-                  <CardHeader className="pb-2 sm:pb-3 p-3 sm:p-6">
-                    <div className="flex items-start justify-between gap-2">
-                      <div className="min-w-0 flex-1">
-                        <CardTitle className="text-sm sm:text-base lg:text-lg leading-tight truncate">{product.name}</CardTitle>
-                        {product.description && (
-                          <CardDescription className="text-xs sm:text-sm mt-1 line-clamp-2">
-                            {product.description.substring(0, 50)}
-                            {product.description.length > 50 ? '...' : ''}
-                          </CardDescription>
-                        )}
-                      </div>
-                      <div className="text-sm sm:text-base lg:text-lg font-bold text-primary flex-shrink-0">
-                        {formatCurrency(product.price)}
-                      </div>
-                    </div>
-                  </CardHeader>
-                  <CardContent className="pt-0 p-3 sm:p-6 sm:pt-0">
-                    <div className="flex items-center justify-between gap-2">
-                      <div className="flex items-center gap-1 sm:gap-2 flex-wrap">
-                        {product.preparation_time > 0 && (
-                          <Badge variant="outline" className="text-xs px-1.5 py-0.5">
-                            <Clock className="w-2.5 h-2.5 sm:w-3 sm:h-3 mr-1" />
-                            {product.preparation_time}min
-                          </Badge>
-                        )}
-                        {!product.is_available && (
-                          <Badge variant="secondary" className="text-xs px-1.5 py-0.5">
-                            Unavailable
-                          </Badge>
-                        )}
-                      </div>
+        <div className="flex-1 overflow-y-auto p-6">
+          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-5">
+            {filteredProducts.map((product) => {
+              const cartItem = cart.find(
+                (item) => item.product.id === product.id,
+              );
+              const category = mockCategories.find(
+                (c) => c.id === product.category_id,
+              );
 
-                      {product.is_available && (
-                        <div className="flex items-center gap-1 sm:gap-2 flex-shrink-0">
-                          {cartItem ? (
-                            <div className="flex items-center gap-1 sm:gap-2">
-                              <Button
-                                variant="outline"
-                                size="sm"
-                                onClick={() => removeFromCart(product.id)}
-                                className="min-h-[36px] min-w-[36px] p-1.5 sm:min-h-[44px] sm:min-w-[44px] sm:p-2 touch-manipulation"
-                              >
-                                <Minus className="h-3 w-3 sm:h-4 sm:w-4" />
-                              </Button>
-                              <span className="w-6 sm:w-8 text-center font-medium text-sm sm:text-base">
-                                {cartItem.quantity}
-                              </span>
-                              <Button
-                                variant="outline"
-                                size="sm"
-                                onClick={() => addToCart(product)}
-                                className="min-h-[36px] min-w-[36px] p-1.5 sm:min-h-[44px] sm:min-w-[44px] sm:p-2 touch-manipulation"
-                              >
-                                <Plus className="h-3 w-3 sm:h-4 sm:w-4" />
-                              </Button>
-                            </div>
-                          ) : (
-                            <Button
-                              variant="default"
-                              size="sm"
-                              onClick={() => addToCart(product)}
-                              className="min-h-[36px] px-3 sm:min-h-[44px] sm:px-4 text-xs sm:text-sm touch-manipulation"
-                            >
-                              <Plus className="h-3 w-3 sm:h-4 sm:w-4 mr-1" />
-                              <span className="hidden sm:inline">Add</span>
-                              <span className="sm:hidden">+</span>
-                            </Button>
-                          )}
+              return (
+                <div
+                  key={product.id}
+                  className="group bg-white rounded-2xl overflow-hidden border border-slate-200/50 hover:shadow-lg hover:border-blue-300/50 transition-all duration-200"
+                >
+                  {/* Product Body */}
+                  <div className="p-5">
+                    <div className="flex items-start justify-between mb-4">
+                      <div className="flex-1">
+                        <h3 className="font-bold text-slate-900 text-base group-hover:text-blue-600 transition-colors">
+                          {product.name}
+                        </h3>
+                        <p className="text-slate-600 text-xs mt-1">
+                          {product.description}
+                        </p>
+                      </div>
+                      <div className="text-2xl ml-3">{category?.icon}</div>
+                    </div>
+
+                    {/* Price & Time */}
+                    <div className="flex items-center justify-between mb-4">
+                      <div className="text-2xl font-bold text-slate-900">
+                        Rp {product.price.toLocaleString()}
+                      </div>
+                      {product.preparation_time > 0 && (
+                        <div className="flex items-center gap-1.5 px-2.5 py-1.5 bg-orange-100 rounded-lg">
+                          <Clock className="w-3.5 h-3.5 text-orange-600" />
+                          <span className="text-xs text-orange-700 font-semibold">
+                            {product.preparation_time}m
+                          </span>
                         </div>
                       )}
                     </div>
-                  </CardContent>
-                </Card>
-              )
+
+                    {/* Add Button */}
+                    {!cartItem ? (
+                      <button
+                        onClick={() => addToCart(product)}
+                        className="w-full flex items-center justify-center gap-2 px-4 py-3 bg-gradient-to-r from-blue-600 to-blue-500 text-white rounded-xl font-semibold hover:shadow-lg transition-all active:scale-95"
+                      >
+                        <Plus className="w-5 h-5" />
+                        Add to Order
+                      </button>
+                    ) : (
+                      <div className="flex items-center gap-2 bg-slate-100 rounded-xl p-1.5">
+                        <button
+                          onClick={() => removeFromCart(product.id)}
+                          className="flex-1 flex items-center justify-center p-2 hover:bg-white rounded-lg transition-colors"
+                        >
+                          <Minus className="w-4 h-4 text-slate-600" />
+                        </button>
+                        <span className="flex-1 text-center font-bold text-slate-900 text-lg">
+                          {cartItem.quantity}
+                        </span>
+                        <button
+                          onClick={() => addToCart(product)}
+                          className="flex-1 flex items-center justify-center p-2 hover:bg-white rounded-lg transition-colors"
+                        >
+                          <Plus className="w-4 h-4 text-blue-600" />
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              );
             })}
           </div>
+
+          {filteredProducts.length === 0 && (
+            <div className="flex flex-col items-center justify-center h-96 text-center">
+              <AlertCircle className="w-16 h-16 text-slate-300 mb-4" />
+              <p className="text-slate-600 font-semibold text-lg">
+                No products found
+              </p>
+              <p className="text-slate-500 text-sm mt-2">
+                Try searching with different keywords
+              </p>
+            </div>
+          )}
         </div>
       </div>
 
-      {/* Right Sidebar - Cart and Order */}
-      <div className="w-full lg:w-1/3 flex flex-col bg-card max-h-screen lg:max-h-none">
-        {/* Table Selection */}
-        <div className="p-3 sm:p-4 border-b border-border flex-shrink-0">
-          <div className="flex items-center justify-between mb-3">
-            <h3 className="font-semibold flex items-center text-sm sm:text-base">
-              <TableIcon className="w-3 h-3 sm:w-4 sm:h-4 mr-1 sm:mr-2" />
-              <span className="hidden sm:inline">Select Table</span>
-              <span className="sm:hidden">Table</span>
-            </h3>
-            <div className="flex gap-1">
-              <Button
-                variant={!showTableView ? 'default' : 'outline'}
-                size="sm"
+      {/* RIGHT SIDE - ORDER SUMMARY */}
+      <div className="w-96 flex flex-col bg-white border-l border-slate-200/50 shadow-xl">
+        {/* Table Selection Header */}
+        <div className="sticky top-0 z-20 bg-gradient-to-r from-blue-600 to-blue-500 text-white p-6 rounded-b-3xl">
+          <div className="flex items-center justify-between mb-5">
+            <div className="flex items-center gap-3">
+              <Table2 className="w-6 h-6" />
+              <h2 className="text-xl font-bold">Select Table</h2>
+            </div>
+            <div className="flex gap-2">
+              <button
                 onClick={() => setShowTableView(false)}
-                className="min-h-[36px] px-3 text-xs sm:text-sm sm:min-h-[44px] sm:px-4 touch-manipulation"
+                className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all ${
+                  !showTableView
+                    ? "bg-white/30 backdrop-blur-sm"
+                    : "bg-white/20 hover:bg-white/30"
+                }`}
               >
                 List
-              </Button>
-              <Button
-                variant={showTableView ? 'default' : 'outline'}
-                size="sm"
+              </button>
+              <button
                 onClick={() => setShowTableView(true)}
-                className="min-h-[36px] px-3 text-xs sm:text-sm sm:min-h-[44px] sm:px-4 touch-manipulation"
+                className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all ${
+                  showTableView
+                    ? "bg-white/30 backdrop-blur-sm"
+                    : "bg-white/20 hover:bg-white/30"
+                }`}
               >
                 Floor
-              </Button>
+              </button>
             </div>
           </div>
 
           {!showTableView ? (
-            // Simple List View - Only Available Tables
-            <>
-              <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
-                {availableTables.slice(0, 9).map(table => (
-                  <Button
-                    key={table.id}
-                    variant={selectedTable?.id === table.id ? 'default' : 'outline'}
-                    size="sm"
-                    onClick={() => setSelectedTable(table)}
-                    className="h-12 sm:h-14 flex flex-col text-xs sm:text-sm min-h-[48px] touch-manipulation"
-                  >
-                    <span className="font-semibold">{table.table_number}</span>
-                    <span className="text-[10px] sm:text-xs opacity-75">{table.seating_capacity} seats</span>
-                  </Button>
-                ))}
-              </div>
-              {availableTables.length > 9 && (
-                <p className="text-xs text-muted-foreground mt-2">
-                  +{availableTables.length - 9} more tables available
-                </p>
-              )}
-            </>
+            // List View
+            <div className="grid grid-cols-3 gap-2.5">
+              {availableTables.slice(0, 9).map((table) => (
+                <button
+                  key={table.id}
+                  onClick={() => setSelectedTable(table)}
+                  className={`p-4 rounded-xl font-semibold transition-all transform hover:scale-105 active:scale-95 ${
+                    selectedTable?.id === table.id
+                      ? "bg-white text-blue-600 shadow-lg"
+                      : "bg-white/20 backdrop-blur-sm text-white hover:bg-white/30"
+                  }`}
+                >
+                  <div className="text-xl font-bold">T{table.table_number}</div>
+                  <div className="text-xs mt-1.5 opacity-90">
+                    {table.seating_capacity} seats
+                  </div>
+                </button>
+              ))}
+            </div>
           ) : (
-            // Restaurant Floor View - All Tables with Status
-            <div className="space-y-3">
-              {/* Status Legend */}
-              <div className="grid grid-cols-2 gap-2 text-[10px] sm:text-xs">
-                <div className="flex items-center gap-1">
-                  <div className="w-2 h-2 sm:w-3 sm:h-3 rounded-full bg-green-500 flex-shrink-0"></div>
-                  <span className="truncate">Available</span>
-                </div>
-                <div className="flex items-center gap-1">
-                  <div className="w-2 h-2 sm:w-3 sm:h-3 rounded-full bg-blue-500 flex-shrink-0"></div>
-                  <span className="truncate">Seated</span>
-                </div>
-                <div className="flex items-center gap-1">
-                  <div className="w-2 h-2 sm:w-3 sm:h-3 rounded-full bg-yellow-500 flex-shrink-0"></div>
-                  <span className="truncate">Pending</span>
-                </div>
-                <div className="flex items-center gap-1">
-                  <div className="w-2 h-2 sm:w-3 sm:h-3 rounded-full bg-red-500 flex-shrink-0"></div>
-                  <span className="truncate">Occupied</span>
-                </div>
-              </div>
-
-              {/* Table Grid */}
-              <div className="grid grid-cols-3 sm:grid-cols-4 gap-2 max-h-40 sm:max-h-48 overflow-y-auto">
-                {tablesWithStatus.map(table => {
-                  const canSelect = table.statusInfo.status === 'available' || table.statusInfo.status === 'seated'
-                  return (
-                    <Button
-                      key={table.id}
-                      onClick={() => canSelect && setSelectedTable(table)}
-                      disabled={!canSelect}
-                      className={`h-12 sm:h-14 flex flex-col p-1.5 sm:p-2 relative min-h-[48px] touch-manipulation ${
-                        canSelect ? 'cursor-pointer' : 'cursor-not-allowed opacity-60'
-                      } ${
-                        selectedTable?.id === table.id ? 'ring-2 ring-primary' : ''
-                      }`}
-                    >
-                      <div className="font-semibold text-xs sm:text-sm">T{table.table_number}</div>
-                      <div className="text-[10px] sm:text-xs">{table.seating_capacity} seats</div>
-                      
-                      {/* Status indicator */}
-                      <div className={`absolute -top-1 -right-1 w-2.5 h-2.5 sm:w-3 sm:h-3 rounded-full ${
-                        table.statusInfo.status === 'available' ? 'bg-green-500' :
-                        table.statusInfo.status === 'seated' ? 'bg-blue-500' :
-                        table.statusInfo.status === 'pending' ? 'bg-yellow-500' :
-                        'bg-red-500'
-                      }`} />
-                      
-                      {/* Active order indicator */}
-                      {table.activeOrder && (
-                        <div className="absolute -bottom-1 left-1/2 transform -translate-x-1/2 text-[9px] sm:text-[10px] bg-yellow-200 text-yellow-800 px-1 py-0.5 rounded truncate max-w-full">
-                          #{table.activeOrder.order_number?.slice(-4)}
-                        </div>
-                      )}
-                    </Button>
-                  )
-                })}
-              </div>
+            // Floor View
+            <div className="grid grid-cols-4 gap-2 max-h-56 overflow-y-auto">
+              {mockTables.map((table) => (
+                <button
+                  key={table.id}
+                  disabled={table.is_occupied}
+                  onClick={() => setSelectedTable(table)}
+                  className={`p-3 rounded-xl font-bold transition-all transform ${
+                    table.is_occupied
+                      ? "bg-red-500/30 text-white/50 cursor-not-allowed"
+                      : selectedTable?.id === table.id
+                        ? "bg-white text-blue-600 shadow-lg scale-105"
+                        : "bg-white/20 text-white hover:bg-white/30"
+                  }`}
+                >
+                  <div className="text-lg">T{table.table_number}</div>
+                  <div className="text-xs mt-1">{table.seating_capacity}s</div>
+                  {table.is_occupied && <div className="text-xs mt-1">✗</div>}
+                </button>
+              ))}
             </div>
           )}
 
-          {/* Selected Table Info */}
           {selectedTable && (
-            <div className="mt-3 p-2 sm:p-3 bg-blue-50 border border-blue-200 rounded-lg">
-              <div className="text-xs sm:text-sm font-medium text-blue-900">
-                Selected: Table {selectedTable.table_number}
+            <div className="mt-5 p-4 bg-white/20 backdrop-blur-sm rounded-xl border border-white/30">
+              <div className="flex items-center gap-2 mb-1">
+                <MapPin className="w-4 h-4" />
+                <div className="font-semibold">
+                  Table {selectedTable.table_number}
+                </div>
               </div>
-              <div className="text-[10px] sm:text-xs text-blue-700">
-                {selectedTable.seating_capacity} seats • {selectedTable.location || 'Main floor'}
+              <div className="text-xs text-white/80">
+                {selectedTable.seating_capacity} seats •{" "}
+                {selectedTable.location}
               </div>
             </div>
           )}
         </div>
 
         {/* Guest Information */}
-        <div className="p-3 sm:p-4 border-b border-border flex-shrink-0">
-          <h3 className="font-semibold mb-3 flex items-center text-sm sm:text-base">
-            <User className="w-3 h-3 sm:w-4 sm:h-4 mr-1 sm:mr-2" />
-            <span className="hidden sm:inline">Guest Information</span>
-            <span className="sm:hidden">Guest Info</span>
-          </h3>
-          <Input
-            placeholder="Guest name (optional)"
+        <div className="p-6 border-b border-slate-200/50">
+          <label className="block text-sm font-bold text-slate-900 mb-3">
+            Guest Name
+          </label>
+          <input
+            type="text"
+            placeholder="Enter guest name..."
             value={customerName}
             onChange={(e) => setCustomerName(e.target.value)}
-            className="h-10 sm:h-11 text-sm sm:text-base touch-manipulation"
+            className="w-full px-4 py-3 bg-slate-100 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 focus:bg-white transition-all font-medium text-sm"
           />
-          <div className="text-xs text-muted-foreground mt-2 hidden sm:block">
-            💡 Tip: Adding guest names helps with personalized service
-          </div>
         </div>
 
-        {/* Quick Server Actions */}
-        <div className="p-3 sm:p-4 border-b border-border flex-shrink-0">
-          <h3 className="font-semibold mb-3 text-xs sm:text-sm">Quick Actions</h3>
-          <div className="grid grid-cols-2 gap-2">
-            <Button variant="outline" size="sm" className="h-8 sm:h-10 text-xs touch-manipulation min-h-[36px]">
-              <Settings className="w-3 h-3 mr-1" />
-              <span className="hidden sm:inline">Table Settings</span>
-              <span className="sm:hidden">Settings</span>
-            </Button>
-            <Button variant="outline" size="sm" className="h-8 sm:h-10 text-xs touch-manipulation min-h-[36px]">
-              <Package className="w-3 h-3 mr-1" />
-              <span className="hidden sm:inline">Specials</span>
-              <span className="sm:hidden">Specials</span>
-            </Button>
-          </div>
-        </div>
-
-        {/* Cart */}
-        <div className="flex-1 overflow-y-auto">
-          <div className="p-3 sm:p-4">
-            <h3 className="font-semibold mb-3 flex items-center text-sm sm:text-base">
-              <ShoppingCart className="w-3 h-3 sm:w-4 sm:h-4 mr-1 sm:mr-2" />
-              <span className="hidden sm:inline">Order Items ({cart.length})</span>
-              <span className="sm:hidden">Items ({cart.length})</span>
-            </h3>
-            
-            {cart.length === 0 ? (
-              <div className="text-center py-6 sm:py-8 text-muted-foreground">
-                <ShoppingCart className="w-8 h-8 sm:w-12 sm:h-12 mx-auto mb-3 opacity-50" />
-                <p className="text-sm sm:text-base font-medium">Ready to take an order</p>
-                <p className="text-xs sm:text-sm mt-1">
-                  {selectedTable 
-                    ? `Table ${selectedTable.table_number}`
-                    : 'Select a table and add items'
-                  }
-                </p>
-              </div>
-            ) : (
-              <div className="space-y-2 sm:space-y-3">
-                {cart.map(item => (
-                  <div key={item.product.id} className="flex items-center justify-between p-2 sm:p-3 bg-muted/50 rounded-lg">
-                    <div className="flex-1 min-w-0 mr-2">
-                      <div className="font-medium truncate text-sm sm:text-base">{item.product.name}</div>
-                      <div className="text-xs sm:text-sm text-muted-foreground">
-                        {formatCurrency(item.product.price)} × {item.quantity}
-                      </div>
-                    </div>
-                    <div className="flex items-center gap-1 sm:gap-2 flex-shrink-0">
-                      <div className="font-medium text-sm sm:text-base">
-                        {formatCurrency(item.product.price * item.quantity)}
-                      </div>
-                      <div className="flex items-center gap-1">
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={() => removeFromCart(item.product.id)}
-                          className="min-h-[32px] min-w-[32px] p-1 sm:min-h-[36px] sm:min-w-[36px] sm:p-2 touch-manipulation"
-                        >
-                          <Minus className="h-3 w-3" />
-                        </Button>
-                        <span className="w-6 sm:w-8 text-center text-sm sm:text-base font-medium">{item.quantity}</span>
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={() => addToCart(item.product)}
-                          className="min-h-[32px] min-w-[32px] p-1 sm:min-h-[36px] sm:min-w-[36px] sm:p-2 touch-manipulation"
-                        >
-                          <Plus className="h-3 w-3" />
-                        </Button>
-                      </div>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
-
-            {/* Order Notes */}
-            {cart.length > 0 && (
-              <div className="mt-4">
-                <label className="text-xs sm:text-sm font-medium">Order Notes</label>
-                <Input
-                  placeholder="Special requests or notes..."
-                  value={orderNotes}
-                  onChange={(e) => setOrderNotes(e.target.value)}
-                  className="mt-1 h-10 sm:h-11 text-sm sm:text-base touch-manipulation"
-                />
-              </div>
-            )}
-          </div>
-        </div>
-
-        {/* Order Summary and Actions */}
-        {cart.length > 0 ? (
-          <div className="p-3 sm:p-4 border-t border-border bg-card flex-shrink-0">
-            <div className="space-y-3">
-              {/* Order Summary */}
-              <div className="bg-blue-50 border border-blue-200 rounded-lg p-3">
-                <div className="flex justify-between items-center mb-2">
-                  <span className="text-xs sm:text-sm text-blue-700">
-                    {selectedTable ? `Table ${selectedTable.table_number}` : 'No table selected'}
-                  </span>
-                  <span className="text-xs sm:text-sm text-blue-700">
-                    {cart.length} item{cart.length !== 1 ? 's' : ''}
-                  </span>
-                </div>
-                <div className="flex justify-between text-base sm:text-lg font-semibold text-blue-900">
-                  <span>Order Total:</span>
-                  <span>{formatCurrency(getTotalAmount())}</span>
-                </div>
-              </div>
-
-              {/* Action Button */}
-              <Button
-                className="w-full min-h-[48px] sm:min-h-[52px] text-sm sm:text-base font-semibold touch-manipulation"
-                size="lg"
-                onClick={handleCreateOrder}
-                disabled={!selectedTable || cart.length === 0 || createOrderMutation.isPending}
+        {/* Cart Items */}
+        <div className="flex-1 overflow-y-auto p-6 space-y-3">
+          {cart.length === 0 ? (
+            <div className="flex flex-col items-center justify-center h-full py-12 text-center">
+              <ShoppingCart className="w-14 h-14 text-slate-300 mb-4" />
+              <p className="text-slate-600 font-semibold">Cart is empty</p>
+              <p className="text-slate-500 text-sm mt-2">Add items from menu</p>
+            </div>
+          ) : (
+            cart.map((item) => (
+              <div
+                key={item.product.id}
+                className="flex items-center justify-between p-4 bg-gradient-to-r from-slate-50 to-slate-100 rounded-xl border border-slate-200/50 hover:shadow-md transition-all"
               >
-                {createOrderMutation.isPending ? (
+                <div className="flex-1 min-w-0">
+                  <p className="font-semibold text-slate-900 text-sm">
+                    {item.product.name}
+                  </p>
+                  <p className="text-xs text-slate-600 mt-1">
+                    Rp {item.product.price.toLocaleString()} × {item.quantity}
+                  </p>
+                </div>
+                <div className="flex items-center gap-3 ml-4 flex-shrink-0">
+                  <p className="font-bold text-slate-900 min-w-[80px] text-right">
+                    Rp {(item.product.price * item.quantity).toLocaleString()}
+                  </p>
+                  <button
+                    onClick={() => removeFromCart(item.product.id)}
+                    className="p-2 hover:bg-slate-200 rounded-lg transition-colors"
+                  >
+                    <Minus className="w-4 h-4 text-slate-600" />
+                  </button>
+                </div>
+              </div>
+            ))
+          )}
+        </div>
+
+        {/* Order Notes */}
+        {cart.length > 0 && (
+          <div className="px-6 pb-4">
+            <label className="block text-xs font-bold text-slate-900 mb-2">
+              Special Instructions
+            </label>
+            <textarea
+              placeholder="Any special requests..."
+              value={orderNotes}
+              onChange={(e) => setOrderNotes(e.target.value)}
+              className="w-full px-4 py-2.5 bg-slate-100 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 transition-all resize-none font-medium"
+              rows="2"
+            />
+          </div>
+        )}
+
+        {/* Footer - Summary & Button */}
+        <div className="sticky bottom-0 bg-gradient-to-t from-white via-white to-transparent p-6 border-t border-slate-200/50 space-y-4">
+          {cart.length > 0 ? (
+            <>
+              <div className="space-y-3 p-5 bg-gradient-to-br from-blue-50 to-purple-50 rounded-2xl border border-blue-200/50">
+                <div className="flex justify-between items-center text-sm">
+                  <span className="text-slate-700 font-medium">Subtotal:</span>
+                  <span className="font-semibold text-slate-900">
+                    Rp {getTotalAmount().toLocaleString()}
+                  </span>
+                </div>
+                <div className="border-t border-slate-200 pt-3">
+                  <div className="flex justify-between items-center text-lg font-bold">
+                    <span className="text-slate-900">Total:</span>
+                    <span className="bg-gradient-to-r from-blue-600 to-blue-500 bg-clip-text text-transparent text-xl">
+                      Rp {getTotalAmount().toLocaleString()}
+                    </span>
+                  </div>
+                </div>
+              </div>
+
+              <button
+                onClick={handleCreateOrder}
+                disabled={!selectedTable || isProcessing}
+                className={`w-full flex items-center justify-center gap-2 px-6 py-4 rounded-xl font-bold text-white transition-all active:scale-95 text-base ${
+                  !selectedTable
+                    ? "bg-slate-300 cursor-not-allowed"
+                    : "bg-gradient-to-r from-blue-600 to-blue-500 hover:shadow-lg"
+                }`}
+              >
+                {isProcessing ? (
                   <>
-                    <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin mr-2" />
-                    <span className="hidden sm:inline">Sending to Kitchen...</span>
-                    <span className="sm:hidden">Sending...</span>
+                    <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                    Sending Order...
                   </>
                 ) : !selectedTable ? (
                   <>
-                    <TableIcon className="w-4 h-4 mr-2" />
-                    <span className="hidden sm:inline">Select a Table First</span>
-                    <span className="sm:hidden">Select Table</span>
+                    <AlertCircle className="w-5 h-5" />
+                    Select a Table
                   </>
                 ) : (
                   <>
-                    <Check className="w-4 h-4 mr-2" />
-                    <span className="hidden sm:inline">Send Order to Kitchen</span>
-                    <span className="sm:hidden">Send Order</span>
+                    <Check className="w-5 h-5" />
+                    Send to Kitchen
                   </>
                 )}
-              </Button>
-
-              {/* Server Tips */}
-              <div className="text-xs text-center text-muted-foreground hidden sm:block">
-                💡 Double-check the order with guests before submitting
-              </div>
-            </div>
-          </div>
-        ) : (
-          <div className="p-3 sm:p-4 border-t border-border bg-card flex-shrink-0">
-            <div className="text-center text-muted-foreground">
-              <p className="text-sm sm:text-base font-medium">No items selected</p>
-              <p className="text-xs sm:text-sm mt-1">
-                {selectedTable ? 'Add items to start taking an order' : 'Select a table to begin'}
+              </button>
+            </>
+          ) : (
+            <div className="text-center py-6 text-slate-600">
+              <p className="text-sm font-medium">No items selected</p>
+              <p className="text-xs mt-2">
+                {selectedTable ? "Add items to start" : "Select table to begin"}
               </p>
             </div>
-          </div>
-        )}
+          )}
+        </div>
       </div>
     </div>
-  )
+  );
 }

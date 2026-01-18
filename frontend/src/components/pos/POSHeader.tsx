@@ -1,69 +1,89 @@
-import { useState } from 'react'
-import { Button } from '@/components/ui/button'
-import { Input } from '@/components/ui/input'
-import { Badge } from '@/components/ui/badge'
-import { 
-  Store, 
-  User as UserIcon, 
-  LogOut, 
+import { useState } from "react";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Badge } from "@/components/ui/badge";
+import {
+  Store,
+  User as UserIcon,
+  LogOut,
   Settings,
   UtensilsCrossed,
   ShoppingBag,
   Truck,
   MapPin,
-  ChefHat
-} from 'lucide-react'
-import apiClient from '@/api/client'
-import type { User, DiningTable } from '@/types'
+  ChefHat,
+} from "lucide-react";
+import apiClient from "@/api/client";
+import type { User, DiningTable } from "@/types";
 
 interface POSHeaderProps {
-  user: User
-  selectedTable: DiningTable | null
-  orderType: 'dine_in' | 'takeout' | 'delivery'
-  onOrderTypeChange: (type: 'dine_in' | 'takeout' | 'delivery') => void
-  onTableSelect: () => void
-  customerName: string
-  onCustomerNameChange: (name: string) => void
+  user: User;
+  selectedTable: DiningTable | null;
+  orderType: "dine_in" | "takeout" | "delivery";
+  onOrderTypeChange: (type: "dine_in" | "takeout" | "delivery") => void;
+  onTableSelect: () => void;
+  customerName: string;
+  onCustomerNameChange: (name: string) => void;
 }
 
-export function POSHeader({ 
-  user, 
-  selectedTable, 
-  orderType, 
-  onOrderTypeChange, 
+export function POSHeader({
+  user,
+  selectedTable,
+  orderType,
+  onOrderTypeChange,
   onTableSelect,
   customerName,
-  onCustomerNameChange
+  onCustomerNameChange,
 }: POSHeaderProps) {
-  const [showUserMenu, setShowUserMenu] = useState(false)
-  const [showPaymentHistory, setShowPaymentHistory] = useState(false)
+  const [showUserMenu, setShowUserMenu] = useState(false);
+  const [showPaymentHistory, setShowPaymentHistory] = useState(false);
 
   const handleLogout = async () => {
     try {
-      await apiClient.logout()
+      await apiClient.logout();
     } catch (error) {
       // Even if logout fails, clear local auth
     } finally {
-      apiClient.clearAuth()
-      window.location.href = '/login'
+      apiClient.clearAuth();
+      window.location.href = "/login";
     }
-  }
+  };
 
   const getRoleBadgeColor = (role: string) => {
     switch (role) {
-      case 'admin': return 'bg-red-100 text-red-700'
-      case 'manager': return 'bg-blue-100 text-blue-700'
-      case 'cashier': return 'bg-green-100 text-green-700'
-      case 'kitchen': return 'bg-yellow-100 text-yellow-700'
-      default: return 'bg-gray-100 text-gray-700'
+      case "admin":
+        return "bg-red-100 text-red-700";
+      case "manager":
+        return "bg-blue-100 text-blue-700";
+      case "cashier":
+        return "bg-green-100 text-green-700";
+      case "kitchen":
+        return "bg-yellow-100 text-yellow-700";
+      default:
+        return "bg-gray-100 text-gray-700";
     }
-  }
+  };
 
   const orderTypeConfigs = [
-    { type: 'dine_in' as const, label: 'Dine In', icon: UtensilsCrossed, color: 'bg-blue-100 text-blue-700' },
-    { type: 'takeout' as const, label: 'Takeout', icon: ShoppingBag, color: 'bg-green-100 text-green-700' },
-    { type: 'delivery' as const, label: 'Delivery', icon: Truck, color: 'bg-purple-100 text-purple-700' },
-  ]
+    {
+      type: "dine_in" as const,
+      label: "Dine In",
+      icon: UtensilsCrossed,
+      color: "bg-blue-100 text-blue-700",
+    },
+    {
+      type: "takeout" as const,
+      label: "Takeout",
+      icon: ShoppingBag,
+      color: "bg-green-100 text-green-700",
+    },
+    {
+      type: "delivery" as const,
+      label: "Delivery",
+      icon: Truck,
+      color: "bg-purple-100 text-purple-700",
+    },
+  ];
 
   return (
     <header className="bg-white border-b border-gray-200 px-6 py-4">
@@ -75,7 +95,7 @@ export function POSHeader({
               <Store className="w-6 h-6 text-white" />
             </div>
             <div>
-              <h1 className="text-xl font-bold text-gray-900">POS System</h1>
+              <h1 className="text-xl font-bold text-gray-900">Orca POS</h1>
               <p className="text-sm text-gray-500">Point of Sale</p>
             </div>
           </div>
@@ -86,45 +106,49 @@ export function POSHeader({
           {/* Order Type Selection */}
           <div className="flex bg-gray-100 rounded-lg p-1">
             {orderTypeConfigs.map((config) => {
-              const Icon = config.icon
+              const Icon = config.icon;
               return (
                 <button
                   key={config.type}
                   onClick={() => onOrderTypeChange(config.type)}
                   className={`flex items-center gap-2 px-4 py-2 rounded-md text-sm font-medium transition-all ${
                     orderType === config.type
-                      ? 'bg-white shadow-sm text-gray-900'
-                      : 'text-gray-600 hover:text-gray-900'
+                      ? "bg-white shadow-sm text-gray-900"
+                      : "text-gray-600 hover:text-gray-900"
                   }`}
                 >
                   <Icon className="w-4 h-4" />
                   {config.label}
                 </button>
-              )
+              );
             })}
           </div>
 
           {/* Table Selection (Dine In only) */}
-          {orderType === 'dine_in' && (
+          {orderType === "dine_in" && (
             <Button
               variant={selectedTable ? "default" : "outline"}
               onClick={onTableSelect}
               className="flex items-center gap-2"
             >
               <MapPin className="w-4 h-4" />
-              {selectedTable ? `Table ${selectedTable.table_number}` : 'Select Table'}
+              {selectedTable
+                ? `Table ${selectedTable.table_number}`
+                : "Select Table"}
             </Button>
           )}
 
           {/* Customer Name (Takeout/Delivery) */}
-          {orderType !== 'dine_in' && (
+          {orderType !== "dine_in" && (
             <div className="flex items-center gap-2">
               <label className="text-sm font-medium text-gray-700 whitespace-nowrap">
                 Customer:
               </label>
               <Input
                 type="text"
-                placeholder={orderType === 'takeout' ? 'Customer name' : 'Delivery address'}
+                placeholder={
+                  orderType === "takeout" ? "Customer name" : "Delivery address"
+                }
                 value={customerName}
                 onChange={(e) => onCustomerNameChange(e.target.value)}
                 className="w-48"
@@ -151,10 +175,10 @@ export function POSHeader({
           {/* User Actions */}
           <div className="flex items-center gap-2">
             {/* Payment History Access */}
-            {(user.role === 'admin' || user.role === 'cashier') && (
-              <Button 
-                variant="ghost" 
-                size="sm" 
+            {(user.role === "admin" || user.role === "cashier") && (
+              <Button
+                variant="ghost"
+                size="sm"
                 onClick={() => setShowPaymentHistory(true)}
                 className="flex items-center gap-2 text-green-600 hover:text-green-700 hover:bg-green-50"
                 title="Payment History"
@@ -165,11 +189,13 @@ export function POSHeader({
             )}
 
             {/* Kitchen Display Access */}
-            {(user.role === 'kitchen' || user.role === 'admin' || user.role === 'manager') && (
-              <Button 
-                variant="ghost" 
-                size="sm" 
-                onClick={() => window.location.href = '/kitchen'}
+            {(user.role === "kitchen" ||
+              user.role === "admin" ||
+              user.role === "manager") && (
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => (window.location.href = "/kitchen")}
                 className="flex items-center gap-2 text-orange-600 hover:text-orange-700 hover:bg-orange-50"
                 title="Kitchen Display"
               >
@@ -177,14 +203,14 @@ export function POSHeader({
                 <span className="text-sm font-medium">Kitchen</span>
               </Button>
             )}
-            
+
             <Button variant="ghost" size="sm" className="p-2">
               <Settings className="w-4 h-4" />
             </Button>
-            
-            <Button 
-              variant="ghost" 
-              size="sm" 
+
+            <Button
+              variant="ghost"
+              size="sm"
               onClick={handleLogout}
               className="p-2 text-gray-600 hover:text-red-600"
             >
@@ -199,8 +225,10 @@ export function POSHeader({
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
           <div className="bg-white p-6 rounded-lg">
             <h2 className="text-lg font-semibold mb-4">Payment History</h2>
-            <p className="text-gray-600 mb-4">Payment history feature is available in the next update!</p>
-            <button 
+            <p className="text-gray-600 mb-4">
+              Payment history feature is available in the next update!
+            </p>
+            <button
               onClick={() => setShowPaymentHistory(false)}
               className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700"
             >
@@ -210,6 +238,5 @@ export function POSHeader({
         </div>
       )}
     </header>
-  )
+  );
 }
-

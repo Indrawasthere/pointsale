@@ -101,11 +101,11 @@ export const KitchenApp: React.FC = () => {
         fontSize: 24,
         spacing: 32
       }
-      
+
       // TV-specific optimizations
       Orientation.lockToLandscape()
       await setupTVDisplayMode()
-      
+
     } else if (isTablet || width > 768) {
       // Tablet optimization
       config = {
@@ -115,11 +115,11 @@ export const KitchenApp: React.FC = () => {
         fontSize: 18,
         spacing: 24
       }
-      
+
       // Tablet-specific optimizations
       Orientation.lockToLandscape()
       await setupTabletMode()
-      
+
     } else {
       // Smartphone fallback (not primary use case for kitchen)
       config = {
@@ -141,7 +141,7 @@ export const KitchenApp: React.FC = () => {
       // Hide navigation bar for TV displays
       await DeviceInfo.getSystemName() // Android TV detection
     }
-    
+
     // High contrast mode for distance viewing
     const tvSettings = {
       contrast: 'high',
@@ -149,7 +149,7 @@ export const KitchenApp: React.FC = () => {
       animations: 'reduced', // Minimize distractions
       autoRefresh: 3000 // 3-second refresh for TV displays
     }
-    
+
     await applyDisplaySettings(tvSettings)
   }
 
@@ -162,12 +162,12 @@ export const KitchenApp: React.FC = () => {
       multiTouch: false, // Prevent accidental gestures
       autoRefresh: 5000 // 5-second refresh for tablets
     }
-    
+
     await applyDisplaySettings(tabletSettings)
   }
 
   return (
-    <KitchenDisplayLayout 
+    <KitchenDisplayLayout
       deviceConfig={deviceConfig}
       orders={orders}
       onOrderUpdate={handleOrderUpdate}
@@ -192,7 +192,7 @@ class KitchenSyncService {
     // Monitor network connectivity
     NetInfo.addEventListener(state => {
       this.isOnline = state.isConnected ?? false
-      
+
       if (this.isOnline && this.offlineQueue.length > 0) {
         this.processOfflineQueue()
       }
@@ -205,7 +205,7 @@ class KitchenSyncService {
   // ✅ CORRECT: WebSocket connection with reconnection logic
   private async connectWebSocket(): Promise<void> {
     const token = await AsyncStorage.getItem('auth_token')
-    
+
     this.socket = io('ws://localhost:8080', {
       auth: { token },
       transports: ['websocket'],
@@ -218,13 +218,13 @@ class KitchenSyncService {
     this.socket.on('order-created', this.handleNewOrder)
     this.socket.on('order-updated', this.handleOrderUpdate)
     this.socket.on('item-status-changed', this.handleItemStatusChange)
-    
+
     // Connection management
     this.socket.on('connect', () => {
       console.log('✅ Kitchen app connected to server')
       this.processOfflineQueue()
     })
-    
+
     this.socket.on('disconnect', () => {
       console.log('❌ Kitchen app disconnected from server')
     })
@@ -234,10 +234,10 @@ class KitchenSyncService {
   private handleNewOrder = (order: KitchenOrder) => {
     // Play new order sound (800Hz beep)
     this.soundService.playNewOrderSound()
-    
+
     // Add to kitchen display
     this.orderManager.addOrder(order)
-    
+
     // Show notification
     this.notificationService.showNewOrderNotification(order)
   }
@@ -246,22 +246,22 @@ class KitchenSyncService {
   async updateItemStatus(orderId: string, itemId: string, status: ItemStatus): Promise<void> {
     // Optimistic update for immediate UI feedback
     this.orderManager.updateItemStatusOptimistic(orderId, itemId, status)
-    
+
     if (this.isOnline) {
       try {
         await this.apiClient.updateItemStatus(orderId, itemId, status)
-        
+
         // Play status change sound
         if (status === 'ready') {
           this.soundService.playItemReadySound() // 1200Hz
         } else if (status === 'served') {
           this.soundService.playItemServedSound() // 1400Hz
         }
-        
+
       } catch (error) {
         // Revert optimistic update on error
         this.orderManager.revertItemStatusUpdate(orderId, itemId)
-        
+
         // Queue for offline processing
         this.queueOfflineOperation({
           type: 'update-item-status',
@@ -330,7 +330,7 @@ export const ServerApp: React.FC = () => {
   const determineLayoutMode = async () => {
     const { width, height } = Dimensions.get('window')
     const isTablet = await DeviceInfo.isTablet()
-    
+
     // Determine layout mode
     if (isTablet || width > 768) {
       setLayoutMode('tablet')
@@ -354,7 +354,7 @@ export const ServerApp: React.FC = () => {
         longPress: true
       }
     }
-    
+
     await applyLayoutConfig(tabletConfig)
   }
 
@@ -371,12 +371,12 @@ export const ServerApp: React.FC = () => {
         quickActions: ['add-item', 'view-cart', 'checkout']
       }
     }
-    
+
     await applyLayoutConfig(smartphoneConfig)
   }
 
   return (
-    <ServerLayout 
+    <ServerLayout
       mode={layoutMode}
       orientation={orientation}
     />
@@ -402,7 +402,7 @@ class MobilePaymentProcessor {
 
     // Initialize NFC for contactless payments
     await NfcManager.start()
-    
+
     // Discover and connect to card readers
     await this.discoverCardReaders()
   }
@@ -416,13 +416,13 @@ class MobilePaymentProcessor {
     try {
       // Create payment intent
       const paymentIntent = await this.createPaymentIntent(amount)
-      
+
       // Collect payment method
       const result = await this.stripeTerminal.collectPaymentMethod(paymentIntent)
-      
+
       // Process payment
       const confirmation = await this.stripeTerminal.processPayment(result.paymentIntent)
-      
+
       return {
         success: true,
         transactionId: confirmation.paymentIntent.id,
@@ -430,7 +430,7 @@ class MobilePaymentProcessor {
         method: 'card',
         timestamp: new Date().toISOString()
       }
-      
+
     } catch (error) {
       return {
         success: false,
@@ -446,15 +446,15 @@ class MobilePaymentProcessor {
     try {
       // Request NFC technology
       await NfcManager.requestTechnology(NfcTech.Ndef)
-      
+
       // Read NFC tag/card
       const tag = await NfcManager.getTag()
-      
+
       // Process contactless payment
       const result = await this.processNfcPayment(tag, amount)
-      
+
       return result
-      
+
     } catch (error) {
       return {
         success: false,
@@ -470,16 +470,16 @@ class MobilePaymentProcessor {
   // Mobile wallet integration (Apple Pay, Google Pay)
   async processMobileWallet(amount: number): Promise<PaymentResult> {
     const { ApplePay, GooglePay } = await import('react-native-payments')
-    
+
     const paymentRequest = {
       id: 'pos-payment',
       displayItems: [{
         label: 'Order Total',
-        amount: { currency: 'USD', value: amount.toString() }
+        amount: { currency: 'IDR', value: amount.toString() }
       }],
       total: {
         label: 'Total',
-        amount: { currency: 'USD', value: amount.toString() }
+        amount: { currency: 'IDR', value: amount.toString() }
       },
       methodData: [{
         supportedMethods: ['apple-pay', 'google-pay'],
@@ -491,10 +491,10 @@ class MobilePaymentProcessor {
     }
 
     try {
-      const paymentResponse = Platform.OS === 'ios' 
+      const paymentResponse = Platform.OS === 'ios'
         ? await ApplePay.show(paymentRequest)
         : await GooglePay.show(paymentRequest)
-      
+
       return {
         success: true,
         transactionId: paymentResponse.transactionIdentifier,
@@ -502,7 +502,7 @@ class MobilePaymentProcessor {
         method: 'mobile_wallet',
         timestamp: new Date().toISOString()
       }
-      
+
     } catch (error) {
       return {
         success: false,
@@ -529,7 +529,7 @@ interface PosState {
   currentUser: User | null
   isOnline: boolean
   lastSync: number
-  
+
   // Actions
   addOrder: (order: Order) => void
   updateOrder: (orderId: string, updates: Partial<Order>) => void
@@ -546,9 +546,9 @@ export const usePosStore = create<PosState>()(
       isOnline: true,
       lastSync: 0,
 
-      addOrder: (order) => 
-        set((state) => ({ 
-          orders: [...state.orders, order] 
+      addOrder: (order) =>
+        set((state) => ({
+          orders: [...state.orders, order]
         })),
 
       updateOrder: (orderId, updates) =>
@@ -560,31 +560,31 @@ export const usePosStore = create<PosState>()(
 
       syncWithServer: async () => {
         const { orders, lastSync } = get()
-        
+
         try {
           // Sync orders modified since last sync
-          const modifiedOrders = orders.filter(order => 
+          const modifiedOrders = orders.filter(order =>
             order.updated_at > lastSync
           )
-          
+
           if (modifiedOrders.length > 0) {
             await apiClient.syncOrders(modifiedOrders)
           }
-          
+
           // Fetch server updates
           const serverUpdates = await apiClient.getOrderUpdates(lastSync)
-          
+
           set({
             orders: mergeOrderUpdates(orders, serverUpdates),
             lastSync: Date.now()
           })
-          
+
         } catch (error) {
           console.error('Sync failed:', error)
         }
       },
 
-      setOnlineStatus: (status) => 
+      setOnlineStatus: (status) =>
         set({ isOnline: status })
     }),
     {
@@ -662,7 +662,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     minHeight: 44, // iOS minimum touch target
   },
-  
+
   // Size variants
   small: {
     paddingHorizontal: 16,
@@ -679,7 +679,7 @@ const styles = StyleSheet.create({
     paddingVertical: 16,
     minHeight: 60, // TV display optimized
   },
-  
+
   // Variant styles
   primary: {
     backgroundColor: '#007AFF',
@@ -692,7 +692,7 @@ const styles = StyleSheet.create({
   danger: {
     backgroundColor: '#FF3B30',
   },
-  
+
   // Text styles
   text: {
     fontSize: 16,
@@ -733,18 +733,18 @@ class MobilePerformanceManager {
   // ✅ CORRECT: Memory management for long-running apps
   private handleMemoryWarning = (): void => {
     console.log('⚠️ Memory warning received - optimizing...')
-    
+
     // Clear non-essential caches
     ImageCache.clear()
-    
+
     // Limit order history in memory
     OrderManager.limitHistoryItems(25)
-    
+
     // Force garbage collection (if available)
     if (global.gc) {
       global.gc()
     }
-    
+
     // Reduce image quality temporarily
     ImageManager.setQuality('low')
   }
@@ -762,10 +762,10 @@ class MobilePerformanceManager {
   private enablePowerSaveMode(): void {
     // Reduce polling frequency
     SyncManager.setPollingInterval(30000) // 30s instead of 5s
-    
+
     // Pause animations
     AnimationManager.pauseNonCriticalAnimations()
-    
+
     // Reduce network activity
     NetworkManager.enableBatchMode()
   }
@@ -773,10 +773,10 @@ class MobilePerformanceManager {
   private disablePowerSaveMode(): void {
     // Resume normal polling
     SyncManager.setPollingInterval(5000)
-    
+
     // Resume animations
     AnimationManager.resumeAnimations()
-    
+
     // Resume normal network activity
     NetworkManager.disableBatchMode()
   }
@@ -785,7 +785,7 @@ class MobilePerformanceManager {
     if (this.memoryWarningListener) {
       this.memoryWarningListener.remove()
     }
-    
+
     if (this.backgroundTimer) {
       clearInterval(this.backgroundTimer)
     }
@@ -836,7 +836,7 @@ cd kitchen-app
 npx react-native bundle --platform android --dev false --entry-file index.js --bundle-output android/app/src/main/assets/index.android.bundle
 npx react-native bundle --platform ios --dev false --entry-file index.js --bundle-output ios/main.jsbundle
 
-# Build server app  
+# Build server app
 echo "👨‍💼 Building Server Group App..."
 cd ../server-app
 npx react-native bundle --platform android --dev false --entry-file index.js --bundle-output android/app/src/main/assets/index.android.bundle

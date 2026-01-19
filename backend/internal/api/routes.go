@@ -125,6 +125,8 @@ func SetupRoutes(router *gin.RouterGroup, db *sql.DB, authMiddleware gin.Handler
 	{
 		kitchen.GET("/orders", getKitchenOrders(db))
 		kitchen.PATCH("/orders/:id/items/:item_id/status", updateOrderItemStatus(db))
+		// Use existing order handler for order status updates
+		kitchen.PATCH("/orders/:id/status", orderHandler.UpdateOrderStatus)
 	}
 }
 
@@ -311,20 +313,32 @@ func getOrdersReport(db *sql.DB) gin.HandlerFunc {
 }
 
 // Kitchen orders handler
+// Perbaiki getKitchenOrders function - gunakan id langsung, bukan base64
 func getKitchenOrders(db *sql.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		status := c.DefaultQuery("status", "all")
 
 		query := `
-			SELECT DISTINCT o.id, o.order_number, o.table_id, o.order_type, o.status,
-			       o.created_at, o.customer_name,
-			       t.table_number
+			SELECT
+				o.id,  -- Ini akan return UUID sebagai string
+				o.order_number,
+				o.table_id,
+				o.order_type,
+				o.status,
+				o.created_at,
+				o.customer_name,
+				o.notes,
+				t.table_number,
+				t.location,
+				u.first_name,
+				u.last_name
 			FROM orders o
 			LEFT JOIN dining_tables t ON o.table_id = t.id
+			LEFT JOIN users u ON o.user_id = u.id
 			WHERE o.status IN ('confirmed', 'preparing', 'ready')
 		`
 
-		if status != "all" {
+		if status != "all" && status != "" {
 			query += ` AND o.status = '` + status + `'`
 		}
 
@@ -343,12 +357,15 @@ func getKitchenOrders(db *sql.DB) gin.HandlerFunc {
 
 		var orders []map[string]interface{}
 		for rows.Next() {
-			var orderID, tableID interface{}
-			var orderNumber, orderType, orderStatus, customerName, tableNumber sql.NullString
-			var createdAt interface{}
+			var orderID, tableID sql.NullString // Gunakan NullString
+			var orderNumber, orderType, orderStatus, customerName, tableNumber, location, firstName, lastName, notes sql.NullString
+			var createdAt time.Time
 
-			err := rows.Scan(&orderID, &orderNumber, &tableID, &orderType, &orderStatus,
-				&createdAt, &customerName, &tableNumber)
+			err := rows.Scan(
+				&orderID, &orderNumber, &tableID, &orderType, &orderStatus,
+				&createdAt, &customerName, &notes, &tableNumber, &location,
+				&firstName, &lastName,
+			)
 			if err != nil {
 				c.JSON(500, gin.H{
 					"success": false,
@@ -358,15 +375,89 @@ func getKitchenOrders(db *sql.DB) gin.HandlerFunc {
 				return
 			}
 
+			// Get order items
+			itemsQuery := `
+				SELECT
+					oi.id,
+					oi.product_id,
+					oi.quantity,
+					oi.unit_price,
+					oi.total_price,
+					oi.special_instructions,
+					oi.status,
+					p.name as product_name,
+					p.preparation_time
+				FROM order_items oi
+				JOIN products p ON oi.product_id = p.id
+				WHERE oi.order_id = $1
+				ORDER BY oi.created_at
+			`
+
+			itemRows, err := db.Query(itemsQuery, orderID.String)
+			if err != nil {
+				c.JSON(500, gin.H{
+					"success": false,
+					"message": "Failed to fetch order items",
+					"error":   err.Error(),
+				})
+				return
+			}
+			defer itemRows.Close()
+
+			var items []map[string]interface{}
+			for itemRows.Next() {
+				var itemID, productID sql.NullString
+				var quantity int
+				var unitPrice, totalPrice float64
+				var specialInstructions, itemStatus, productName sql.NullString
+				var preparationTime int
+
+				err := itemRows.Scan(
+					&itemID, &productID, &quantity, &unitPrice, &totalPrice,
+					&specialInstructions, &itemStatus, &productName, &preparationTime,
+				)
+				if err != nil {
+					c.JSON(500, gin.H{
+						"success": false,
+						"message": "Failed to scan order item",
+						"error":   err.Error(),
+					})
+					return
+				}
+
+				item := map[string]interface{}{
+					"id":                   itemID.String,
+					"product_id":           productID.String,
+					"quantity":             quantity,
+					"unit_price":           unitPrice,
+					"total_price":          totalPrice,
+					"special_instructions": specialInstructions.String,
+					"status":               itemStatus.String,
+					"product": map[string]interface{}{
+						"name":             productName.String,
+						"preparation_time": preparationTime,
+					},
+				}
+				items = append(items, item)
+			}
+
 			order := map[string]interface{}{
-				"id":            orderID,
+				"id":            orderID.String,
 				"order_number":  orderNumber.String,
-				"table_id":      tableID,
+				"table_id":      tableID.String,
 				"table_number":  tableNumber.String,
+				"location":      location.String,
 				"order_type":    orderType.String,
 				"status":        orderStatus.String,
 				"customer_name": customerName.String,
-				"created_at":    createdAt,
+				"notes":         notes.String,
+				"created_by":    firstName.String + " " + lastName.String,
+				"created_at":    createdAt.Format(time.RFC3339),
+				"items":         items,
+				"table": map[string]interface{}{
+					"table_number": tableNumber.String,
+					"location":     location.String,
+				},
 			}
 
 			orders = append(orders, order)

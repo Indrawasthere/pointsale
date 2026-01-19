@@ -1,205 +1,431 @@
-import { useForm } from 'react-hook-form'
-import { zodResolver } from '@hookform/resolvers/zod'
-import { useMutation, useQueryClient } from '@tanstack/react-query'
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
-import { Form } from '@/components/ui/form'
-import { Button } from '@/components/ui/button'
-import { 
-  TextInputField, 
-  SelectField, 
-  FormSubmitButton,
-  roleOptions 
-} from '@/components/forms/FormComponents'
-import { createUserSchema, updateUserSchema, type CreateUserData, type UpdateUserData } from '@/lib/form-schemas'
-import { toastHelpers } from '@/lib/toast-helpers'
-import apiClient from '@/api/client'
-import type { User } from '@/types'
-import { X } from 'lucide-react'
+import { useForm } from "react-hook-form";
+import { zodResolver } from "@hookform/resolvers/zod";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { z } from "zod";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
+import { Label } from "@/components/ui/label";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { ArrowLeft, Save, User, Mail, Lock, Shield } from "lucide-react";
+import apiClient from "@/api/client";
+import { toastHelpers } from "@/lib/toast-helpers";
+import type { User } from "@/types";
+
+// ✅ Validation Schema
+const userSchema = z.object({
+  username: z.string().min(3, "Username must be at least 3 characters"),
+  email: z.string().email("Invalid email address"),
+  password: z
+    .string()
+    .min(6, "Password must be at least 6 characters")
+    .optional(),
+  first_name: z.string().min(1, "First name is required"),
+  last_name: z.string().min(1, "Last name is required"),
+  role: z.enum(["admin", "manager", "server", "counter", "kitchen"]),
+});
+
+type UserFormData = z.infer<typeof userSchema>;
 
 interface UserFormProps {
-  user?: User // If provided, we're editing; otherwise creating
-  onSuccess?: () => void
-  onCancel?: () => void
-  mode?: 'create' | 'edit'
+  user?: User;
+  mode: "create" | "edit";
+  onSuccess: () => void;
+  onCancel: () => void;
 }
 
-export function UserForm({ user, onSuccess, onCancel, mode = 'create' }: UserFormProps) {
-  const queryClient = useQueryClient()
-  const isEditing = mode === 'edit' && user
+export function UserForm({ user, mode, onSuccess, onCancel }: UserFormProps) {
+  const queryClient = useQueryClient();
 
-  // Choose the appropriate schema and default values
-  const schema = isEditing ? updateUserSchema : createUserSchema
-  const defaultValues = isEditing 
-    ? {
-        id: user.id,
-        username: user.username,
-        email: user.email,
-        first_name: user.first_name,
-        last_name: user.last_name,
-        role: user.role as any,
-        password: '', // Don't pre-fill password for editing
-      }
-    : {
-        username: '',
-        email: '',
-        password: '',
-        first_name: '',
-        last_name: '',
-        role: 'server' as const,
-      }
+  const {
+    register,
+    handleSubmit,
+    setValue,
+    watch,
+    formState: { errors, isSubmitting },
+  } = useForm<UserFormData>({
+    resolver: zodResolver(userSchema),
+    defaultValues: user
+      ? {
+          username: user.username,
+          email: user.email,
+          first_name: user.first_name,
+          last_name: user.last_name,
+          role: user.role as any,
+        }
+      : {
+          role: "server",
+        },
+  });
 
-  const form = useForm<CreateUserData | UpdateUserData>({
-    resolver: zodResolver(schema),
-    defaultValues,
-  })
+  const selectedRole = watch("role");
 
-  // Create mutation
+  // ✅ CREATE Mutation
   const createMutation = useMutation({
-    mutationFn: (data: CreateUserData) => apiClient.createUser(data),
+    mutationFn: async (data: UserFormData) => {
+      console.log("📤 Creating user:", data);
+      const response = await apiClient.createUser(data as any);
+      return response;
+    },
     onSuccess: (response) => {
-      queryClient.invalidateQueries({ queryKey: ['users'] })
-      toastHelpers.userCreated(`${form.getValues('first_name')} ${form.getValues('last_name')}`)
-      form.reset()
-      onSuccess?.()
+      queryClient.invalidateQueries({ queryKey: ["admin-users"] });
+      toastHelpers.userCreated(response.data?.username || "New User");
+      onSuccess();
     },
-    onError: (error) => {
-      toastHelpers.apiError('Create user', error)
+    onError: (error: any) => {
+      console.error("❌ Create user error:", error);
+      toastHelpers.apiError("Create user", error);
     },
-  })
+  });
 
-  // Update mutation  
+  // ✅ UPDATE Mutation
   const updateMutation = useMutation({
-    mutationFn: (data: UpdateUserData) => apiClient.updateUser(data.id.toString(), data),
-    onSuccess: (response) => {
-      queryClient.invalidateQueries({ queryKey: ['users'] })
-      toastHelpers.apiSuccess('Update', `User ${form.getValues('first_name')} ${form.getValues('last_name')}`)
-      onSuccess?.()
-    },
-    onError: (error) => {
-      toastHelpers.apiError('Update user', error)
-    },
-  })
+    mutationFn: async (data: UserFormData) => {
+      if (!user?.id) throw new Error("User ID is required for update");
+      console.log("📤 Updating user:", user.id, data);
 
-  const onSubmit = (data: CreateUserData | UpdateUserData) => {
-    if (isEditing) {
-      // Filter out empty password for updates
-      const updateData = { ...data } as UpdateUserData
-      if (!updateData.password || updateData.password.trim() === '') {
-        delete updateData.password
+      // Only send password if it's provided
+      const updateData: any = { ...data };
+      if (!updateData.password) {
+        delete updateData.password;
       }
-      updateMutation.mutate(updateData)
-    } else {
-      createMutation.mutate(data as CreateUserData)
-    }
-  }
 
-  const isLoading = createMutation.isPending || updateMutation.isPending
+      const response = await apiClient.updateUser(user.id, updateData);
+      return response;
+    },
+    onSuccess: (response) => {
+      queryClient.invalidateQueries({ queryKey: ["admin-users"] });
+      toastHelpers.success(
+        "User Updated",
+        `${response.data?.first_name} ${response.data?.last_name} has been updated successfully.`,
+      );
+      onSuccess();
+    },
+    onError: (error: any) => {
+      console.error("❌ Update user error:", error);
+      toastHelpers.apiError("Update user", error);
+    },
+  });
+
+  const onSubmit = async (data: UserFormData) => {
+    if (mode === "create") {
+      createMutation.mutate(data);
+    } else {
+      updateMutation.mutate(data);
+    }
+  };
+
+  const getRoleColor = (role: string) => {
+    switch (role) {
+      case "admin":
+        return "text-red-600 bg-red-50 border-red-200";
+      case "manager":
+        return "text-purple-600 bg-purple-50 border-purple-200";
+      case "server":
+        return "text-blue-600 bg-blue-50 border-blue-200";
+      case "counter":
+        return "text-green-600 bg-green-50 border-green-200";
+      case "kitchen":
+        return "text-orange-600 bg-orange-50 border-orange-200";
+      default:
+        return "text-gray-600 bg-gray-50 border-gray-200";
+    }
+  };
+
+  const isPending = createMutation.isPending || updateMutation.isPending;
 
   return (
-    <Card className="w-full max-w-2xl mx-auto">
-      <CardHeader className="flex flex-row items-center justify-between">
-        <CardTitle>
-          {isEditing ? 'Edit User' : 'Create New User'}
-        </CardTitle>
-        {onCancel && (
-          <Button
-            variant="ghost"
-            size="icon"
-            onClick={onCancel}
-            disabled={isLoading}
-          >
-            <X className="h-4 w-4" />
-          </Button>
-        )}
-      </CardHeader>
-      <CardContent>
-        <Form {...form}>
-          <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
+    <div className="max-w-3xl mx-auto">
+      <Card>
+        <CardHeader>
+          <div className="flex items-center justify-between">
+            <div className="space-y-1">
+              <CardTitle className="text-2xl flex items-center gap-2">
+                <User className="w-6 h-6" />
+                {mode === "create"
+                  ? "Add New Staff Member"
+                  : "Edit Staff Member"}
+              </CardTitle>
+              <CardDescription>
+                {mode === "create"
+                  ? "Create a new staff account with role-based permissions"
+                  : "Update staff member information and permissions"}
+              </CardDescription>
+            </div>
+            <Button variant="outline" onClick={onCancel} disabled={isPending}>
+              <ArrowLeft className="w-4 h-4 mr-2" />
+              Back
+            </Button>
+          </div>
+        </CardHeader>
+
+        <CardContent>
+          <form onSubmit={handleSubmit(onSubmit)} className="space-y-6">
             {/* Personal Information */}
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <TextInputField
-                control={form.control}
-                name="first_name"
-                label="First Name"
-                placeholder="Enter first name"
-                autoComplete="given-name"
-              />
-              
-              <TextInputField
-                control={form.control}
-                name="last_name"
-                label="Last Name"
-                placeholder="Enter last name"
-                autoComplete="family-name"
-              />
+            <div className="space-y-4">
+              <h3 className="text-lg font-semibold flex items-center gap-2">
+                <User className="w-5 h-5" />
+                Personal Information
+              </h3>
+
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label htmlFor="first_name">First Name *</Label>
+                  <Input
+                    id="first_name"
+                    {...register("first_name")}
+                    placeholder="John"
+                    disabled={isPending}
+                  />
+                  {errors.first_name && (
+                    <p className="text-sm text-red-600">
+                      {errors.first_name.message}
+                    </p>
+                  )}
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="last_name">Last Name *</Label>
+                  <Input
+                    id="last_name"
+                    {...register("last_name")}
+                    placeholder="Doe"
+                    disabled={isPending}
+                  />
+                  {errors.last_name && (
+                    <p className="text-sm text-red-600">
+                      {errors.last_name.message}
+                    </p>
+                  )}
+                </div>
+              </div>
             </div>
 
             {/* Account Information */}
             <div className="space-y-4">
-              <TextInputField
-                control={form.control}
-                name="username"
-                label="Username"
-                placeholder="Enter username"
-                autoComplete="username"
-                description="Used for logging into the system"
-              />
+              <h3 className="text-lg font-semibold flex items-center gap-2">
+                <Mail className="w-5 h-5" />
+                Account Information
+              </h3>
 
-              <TextInputField
-                control={form.control}
-                name="email"
-                label="Email Address"
-                type="email"
-                placeholder="Enter email address"
-                autoComplete="email"
-              />
+              <div className="space-y-2">
+                <Label htmlFor="username">Username *</Label>
+                <Input
+                  id="username"
+                  {...register("username")}
+                  placeholder="johndoe"
+                  disabled={isPending}
+                />
+                {errors.username && (
+                  <p className="text-sm text-red-600">
+                    {errors.username.message}
+                  </p>
+                )}
+              </div>
 
-              <TextInputField
-                control={form.control}
-                name="password"
-                label={isEditing ? "New Password (leave blank to keep current)" : "Password"}
-                type="password"
-                placeholder={isEditing ? "Enter new password or leave blank" : "Enter password"}
-                autoComplete={isEditing ? "new-password" : "new-password"}
-                description={isEditing ? "Leave blank to keep the current password" : "Minimum 6 characters"}
-              />
+              <div className="space-y-2">
+                <Label htmlFor="email">Email *</Label>
+                <Input
+                  id="email"
+                  type="email"
+                  {...register("email")}
+                  placeholder="john.doe@restaurant.com"
+                  disabled={isPending}
+                />
+                {errors.email && (
+                  <p className="text-sm text-red-600">{errors.email.message}</p>
+                )}
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="password">
+                  Password{" "}
+                  {mode === "edit" ? "(leave empty to keep current)" : "*"}
+                </Label>
+                <Input
+                  id="password"
+                  type="password"
+                  {...register("password")}
+                  placeholder={
+                    mode === "edit"
+                      ? "Enter new password to change"
+                      : "Minimum 6 characters"
+                  }
+                  disabled={isPending}
+                />
+                {errors.password && (
+                  <p className="text-sm text-red-600">
+                    {errors.password.message}
+                  </p>
+                )}
+              </div>
             </div>
 
-            {/* Role Selection */}
-            <SelectField
-              control={form.control}
-              name="role"
-              label="Role"
-              placeholder="Select user role"
-              options={roleOptions}
-              description="Determines what features the user can access"
-            />
+            {/* Role & Permissions */}
+            <div className="space-y-4">
+              <h3 className="text-lg font-semibold flex items-center gap-2">
+                <Shield className="w-5 h-5" />
+                Role & Permissions
+              </h3>
 
-            {/* Action Buttons */}
-            <div className="flex gap-3 pt-4">
-              <FormSubmitButton
-                isLoading={isLoading}
-                loadingText={isEditing ? "Updating..." : "Creating..."}
-                className="flex-1"
-              >
-                {isEditing ? 'Update User' : 'Create User'}
-              </FormSubmitButton>
-              
-              {onCancel && (
-                <Button
-                  type="button"
-                  variant="outline"
-                  onClick={onCancel}
-                  disabled={isLoading}
-                  className="flex-1"
+              <div className="space-y-2">
+                <Label htmlFor="role">Role *</Label>
+                <Select
+                  value={selectedRole}
+                  onValueChange={(value) => setValue("role", value as any)}
+                  disabled={isPending}
                 >
-                  Cancel
-                </Button>
-              )}
+                  <SelectTrigger
+                    className={`${getRoleColor(selectedRole || "server")}`}
+                  >
+                    <SelectValue placeholder="Select role" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="admin">
+                      <div className="flex items-center gap-2">
+                        <div className="w-2 h-2 rounded-full bg-red-600" />
+                        <span>Admin</span>
+                        <span className="text-xs text-muted-foreground">
+                          - Full system access
+                        </span>
+                      </div>
+                    </SelectItem>
+                    <SelectItem value="manager">
+                      <div className="flex items-center gap-2">
+                        <div className="w-2 h-2 rounded-full bg-purple-600" />
+                        <span>Manager</span>
+                        <span className="text-xs text-muted-foreground">
+                          - Management & reports
+                        </span>
+                      </div>
+                    </SelectItem>
+                    <SelectItem value="server">
+                      <div className="flex items-center gap-2">
+                        <div className="w-2 h-2 rounded-full bg-blue-600" />
+                        <span>Server</span>
+                        <span className="text-xs text-muted-foreground">
+                          - Dine-in orders only
+                        </span>
+                      </div>
+                    </SelectItem>
+                    <SelectItem value="counter">
+                      <div className="flex items-center gap-2">
+                        <div className="w-2 h-2 rounded-full bg-green-600" />
+                        <span>Counter</span>
+                        <span className="text-xs text-muted-foreground">
+                          - All orders & payments
+                        </span>
+                      </div>
+                    </SelectItem>
+                    <SelectItem value="kitchen">
+                      <div className="flex items-center gap-2">
+                        <div className="w-2 h-2 rounded-full bg-orange-600" />
+                        <span>Kitchen</span>
+                        <span className="text-xs text-muted-foreground">
+                          - Order preparation
+                        </span>
+                      </div>
+                    </SelectItem>
+                  </SelectContent>
+                </Select>
+                {errors.role && (
+                  <p className="text-sm text-red-600">{errors.role.message}</p>
+                )}
+              </div>
+
+              {/* Role Description */}
+              <div
+                className={`p-4 rounded-lg border ${getRoleColor(selectedRole || "server")}`}
+              >
+                <p className="text-sm font-medium mb-2">Role Permissions:</p>
+                <ul className="text-sm space-y-1">
+                  {selectedRole === "admin" && (
+                    <>
+                      <li>✓ Full system access and management</li>
+                      <li>✓ User and staff management</li>
+                      <li>✓ All reports and analytics</li>
+                      <li>✓ System settings configuration</li>
+                    </>
+                  )}
+                  {selectedRole === "manager" && (
+                    <>
+                      <li>✓ View all reports and analytics</li>
+                      <li>✓ Monitor all operations</li>
+                      <li>✓ Access all interfaces</li>
+                      <li>✗ Cannot manage users</li>
+                    </>
+                  )}
+                  {selectedRole === "server" && (
+                    <>
+                      <li>✓ Create dine-in orders only</li>
+                      <li>✓ Table management</li>
+                      <li>✗ Cannot process payments</li>
+                      <li>✗ No access to reports</li>
+                    </>
+                  )}
+                  {selectedRole === "counter" && (
+                    <>
+                      <li>✓ Create all order types</li>
+                      <li>✓ Process payments</li>
+                      <li>✓ Manage transactions</li>
+                      <li>✗ No access to reports</li>
+                    </>
+                  )}
+                  {selectedRole === "kitchen" && (
+                    <>
+                      <li>✓ View kitchen orders</li>
+                      <li>✓ Update order status</li>
+                      <li>✓ Manage preparation</li>
+                      <li>✗ Cannot create orders</li>
+                    </>
+                  )}
+                </ul>
+              </div>
+            </div>
+
+            {/* Actions */}
+            <div className="flex items-center justify-end gap-3 pt-6 border-t">
+              <Button
+                type="button"
+                variant="outline"
+                onClick={onCancel}
+                disabled={isPending}
+              >
+                Cancel
+              </Button>
+              <Button
+                type="submit"
+                disabled={isPending}
+                className="min-w-[120px]"
+              >
+                {isPending ? (
+                  <div className="flex items-center gap-2">
+                    <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                    Saving...
+                  </div>
+                ) : (
+                  <>
+                    <Save className="w-4 h-4 mr-2" />
+                    {mode === "create" ? "Create Staff" : "Update Staff"}
+                  </>
+                )}
+              </Button>
             </div>
           </form>
-        </Form>
-      </CardContent>
-    </Card>
-  )
+        </CardContent>
+      </Card>
+    </div>
+  );
 }

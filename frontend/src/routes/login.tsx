@@ -196,7 +196,6 @@ function LoginPage() {
                     { u: "counter1", r: "Counter", i: CreditCard },
                     { u: "kitchen1", r: "Kitchen", i: ChefHat },
                     { u: "manager1", r: "Manager", i: BarChart3 },
-                    { u: "admin", r: "Admin", i: Settings },
                   ].map((a) => (
                     <button
                       key={a.u}
@@ -213,6 +212,26 @@ function LoginPage() {
                       <span className="text-xs font-mono text-slate-400">
                         admin123
                       </span>
+                    </button>
+                  ))}
+                </div>
+              </div>
+              <div className="pt-4 border-t">
+                <div className="grid gap-2">
+                  {[{ u: "admin", r: "Admin", i: UserCheck }].map((a) => (
+                    <button
+                      key={a.u}
+                      onClick={() => fillDemoCredentials(a.u, "Djisamsoe17")}
+                      className="flex items-center justify-between p-3 rounded-lg border border-slate-200 hover:bg-slate-50 transition"
+                      disabled={loginMutation.isPending}
+                    >
+                      <div className="flex items-center gap-5">
+                        <div className="w-8 h-7 bg-slate-100 rounded flex items-center justify-center">
+                          <a.i className="w-3 h-3" />
+                        </div>
+                        <span className="text-sm font-medium">{a.r}</span>
+                      </div>
+                      <span className="text-xs font-mono text-slate-400"></span>
                     </button>
                   ))}
                 </div>

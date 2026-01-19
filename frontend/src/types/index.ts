@@ -27,7 +27,7 @@ export interface User {
   email: string;
   first_name: string;
   last_name: string;
-  role: 'admin' | 'manager' | 'cashier' | 'kitchen';
+  role: "admin" | "manager" | "cashier" | "kitchen";
   is_active: boolean;
   created_at: string;
   updated_at: string;
@@ -91,8 +91,15 @@ export interface Order {
   table_id?: string;
   user_id?: string;
   customer_name?: string;
-  order_type: 'dine_in' | 'takeout' | 'delivery';
-  status: 'pending' | 'confirmed' | 'preparing' | 'ready' | 'served' | 'completed' | 'cancelled';
+  order_type: "dine_in" | "takeout" | "delivery";
+  status:
+    | "pending"
+    | "confirmed"
+    | "preparing"
+    | "ready"
+    | "served"
+    | "completed"
+    | "cancelled";
   subtotal: number;
   tax_amount: number;
   discount_amount: number;
@@ -116,7 +123,7 @@ export interface OrderItem {
   unit_price: number;
   total_price: number;
   special_instructions?: string;
-  status: 'pending' | 'preparing' | 'ready' | 'served';
+  status: "pending" | "preparing" | "ready" | "served";
   created_at: string;
   updated_at: string;
   product?: Product;
@@ -126,7 +133,7 @@ export interface OrderItem {
 export interface CreateOrderRequest {
   table_id?: string;
   customer_name?: string;
-  order_type: 'dine_in' | 'takeout' | 'delivery';
+  order_type: "dine_in" | "takeout" | "delivery";
   items: CreateOrderItem[];
   notes?: string;
 }
@@ -138,7 +145,14 @@ export interface CreateOrderItem {
 }
 
 export interface UpdateOrderStatusRequest {
-  status: 'pending' | 'confirmed' | 'preparing' | 'ready' | 'served' | 'completed' | 'cancelled';
+  status:
+    | "pending"
+    | "confirmed"
+    | "preparing"
+    | "ready"
+    | "served"
+    | "completed"
+    | "cancelled";
   notes?: string;
 }
 
@@ -146,10 +160,10 @@ export interface UpdateOrderStatusRequest {
 export interface Payment {
   id: string;
   order_id: string;
-  payment_method: 'cash' | 'credit_card' | 'debit_card' | 'digital_wallet';
+  payment_method: "cash" | "credit_card" | "debit_card" | "digital_wallet";
   amount: number;
   reference_number?: string;
-  status: 'pending' | 'completed' | 'failed' | 'refunded';
+  status: "pending" | "completed" | "failed" | "refunded";
   processed_by?: string;
   processed_at?: string;
   created_at: string;
@@ -157,7 +171,7 @@ export interface Payment {
 }
 
 export interface ProcessPaymentRequest {
-  payment_method: 'cash' | 'credit_card' | 'debit_card' | 'digital_wallet';
+  payment_method: "cash" | "credit_card" | "debit_card" | "digital_wallet";
   amount: number;
   reference_number?: string;
 }
@@ -258,3 +272,64 @@ export interface TableFilters {
   available_only?: boolean;
 }
 
+export interface KitchenOrder {
+  id: string;
+  order_number: string;
+  table_id?: string;
+  table_number?: string;
+  order_type: "dine_in" | "takeout" | "delivery";
+  status:
+    | "pending"
+    | "confirmed"
+    | "preparing"
+    | "ready"
+    | "served"
+    | "completed"
+    | "cancelled";
+  created_at: string;
+  customer_name?: string;
+  notes?: string;
+  created_by?: string;
+  items?: KitchenOrderItem[];
+  table?: {
+    table_number: string;
+    location?: string;
+  };
+}
+
+export interface KitchenOrderItem {
+  id: string;
+  product_id: string;
+  product?: {
+    name: string;
+    preparation_time: number;
+  };
+  quantity: number;
+  unit_price: number;
+  total_price: number;
+  special_instructions?: string;
+  status: "pending" | "preparing" | "ready" | "served";
+  created_at: string;
+  updated_at: string;
+}
+
+// Update APIResponse untuk kitchen
+export interface APIResponse<T = any> {
+  success: boolean;
+  message: string;
+  data?: T;
+  error?: string;
+}
+
+export interface PaginatedResponse<T = any> extends APIResponse<T> {
+  meta: {
+    current_page: number;
+    per_page: number;
+    total: number;
+    total_pages: number;
+  };
+}
+
+// Add to APIResponse types
+export interface KitchenOrdersResponse extends APIResponse<KitchenOrder[]> {}
+export interface UpdateItemStatusResponse extends APIResponse<{}> {}

@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import {
   LineChart,
   Line,
@@ -28,59 +28,199 @@ import {
   Clock,
   Eye,
   EyeOff,
+  AlertCircle,
+  Loader,
 } from "lucide-react";
+import apiClient from "@/api/client";
 
-const mockStats = {
-  today_orders: 24,
-  today_revenue: 4850.5,
-  active_orders: 8,
-  occupied_tables: 5,
-  yesterday_orders: 18,
-  yesterday_revenue: 3200.75,
-};
+// Types for real data
+interface DashboardStats {
+  today_orders: number;
+  today_revenue: number;
+  active_orders: number;
+  occupied_tables: number;
+}
 
-const mockIncomeData = [
-  { period: "09:00", orders: 2, gross: 250, tax: 25, net: 225 },
-  { period: "10:00", orders: 5, gross: 680, tax: 68, net: 612 },
-  { period: "11:00", orders: 8, gross: 1200, tax: 120, net: 1080 },
-  { period: "12:00", orders: 9, gross: 1350, tax: 135, net: 1215 },
-  { period: "13:00", orders: 4, gross: 650, tax: 65, net: 585 },
-  { period: "14:00", orders: 2, gross: 320, tax: 32, net: 288 },
-];
+interface SalesData {
+  date?: string;
+  hour?: string;
+  order_count: number;
+  revenue: number;
+}
 
-const mockOrderStatus = [
-  { name: "Completed", value: 20, color: "#10b981" },
-  { name: "Pending", value: 5, color: "#f59e0b" },
-  { name: "Cancelled", value: 1, color: "#ef4444" },
-];
+interface IncomeData {
+  period: string;
+  orders: number;
+  gross: number;
+  tax: number;
+  net: number;
+}
 
-const mockTableStatus = [
-  { location: "Main Hall", total: 8, occupied: 5, available: 3 },
-  { location: "VIP Area", total: 4, occupied: 2, available: 2 },
-  { location: "Outdoor", total: 6, occupied: 1, available: 5 },
-];
+interface OrderStatusData {
+  name: string;
+  value: number;
+  color: string;
+}
+
+interface TableStatusData {
+  location: string;
+  total: number;
+  occupied: number;
+  available: number;
+  occupancy_rate: number;
+}
 
 export default function AdminDashboard() {
   const [selectedPeriod, setSelectedPeriod] = useState("today");
   const [revealRevenue, setRevealRevenue] = useState(true);
+  const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
-  const formatCurrency = (amount) => {
+  // Real data states
+  const [stats, setStats] = useState<DashboardStats | null>(null);
+  const [incomeData, setIncomeData] = useState<IncomeData[]>([]);
+  const [orderStatusData, setOrderStatusData] = useState<OrderStatusData[]>([]);
+  const [tableStatusData, setTableStatusData] = useState<TableStatusData[]>([]);
+  const [previousStats, setPreviousStats] = useState<DashboardStats | null>(
+    null,
+  );
+
+  // Fetch data from API
+  useEffect(() => {
+    const fetchDashboardData = async () => {
+      try {
+        setIsLoading(true);
+        setError(null);
+
+        // Fetch dashboard stats
+        const statsResponse = await apiClient.getDashboardStats();
+        if (statsResponse.success && statsResponse.data) {
+          setStats(statsResponse.data);
+        }
+
+        // Fetch income report
+        const incomeResponse = await apiClient.getIncomeReport(
+          selectedPeriod as any,
+        );
+        if (incomeResponse.success && incomeResponse.data) {
+          // Transform API response to chart format
+          const breakdown = Array.isArray(incomeResponse.data.breakdown)
+            ? incomeResponse.data.breakdown
+            : [];
+
+          const chartData: IncomeData[] = breakdown.map((item: any) => ({
+            period: new Date(item.period).toLocaleString("id-ID", {
+              hour: "2-digit",
+              minute: "2-digit",
+            }),
+            orders: item.orders || 0,
+            gross: item.gross || 0,
+            tax: item.tax || 0,
+            net: item.net || 0,
+          }));
+          setIncomeData(chartData);
+        }
+
+        // Fetch orders report for status breakdown
+        const ordersResponse = await apiClient.getOrdersReport();
+        if (ordersResponse.success && ordersResponse.data) {
+          const statusData: OrderStatusData[] = (
+            ordersResponse.data as any[]
+          ).map((item: any) => ({
+            name: item.status.charAt(0).toUpperCase() + item.status.slice(1),
+            value: item.count || 0,
+            color: getStatusColor(item.status),
+          }));
+          setOrderStatusData(statusData);
+        }
+
+        // Fetch table status
+        const tableResponse = await apiClient.getTableStatus();
+        if (tableResponse.success && tableResponse.data) {
+          const byLocation = (tableResponse.data as any).by_location || [];
+          setTableStatusData(byLocation);
+        }
+      } catch (err) {
+        console.error("Failed to fetch dashboard data:", err);
+        setError(
+          err instanceof Error ? err.message : "Failed to load dashboard data",
+        );
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
+    fetchDashboardData();
+  }, [selectedPeriod]);
+
+  const formatCurrency = (amount: number) => {
     return new Intl.NumberFormat("id-ID", {
       style: "currency",
       currency: "USD",
     }).format(amount);
   };
 
-  const growthPercent = (
-    ((mockStats.today_revenue - mockStats.yesterday_revenue) /
-      mockStats.yesterday_revenue) *
-    100
-  ).toFixed(1);
-  const orderGrowth = (
-    ((mockStats.today_orders - mockStats.yesterday_orders) /
-      mockStats.yesterday_orders) *
-    100
-  ).toFixed(1);
+  const getStatusColor = (status: string): string => {
+    const colors: { [key: string]: string } = {
+      pending: "#fbbf24",
+      confirmed: "#60a5fa",
+      preparing: "#fb923c",
+      ready: "#34d399",
+      served: "#818cf8",
+      completed: "#10b981",
+      cancelled: "#ef4444",
+    };
+    return colors[status] || "#6b7280";
+  };
+
+  const growthPercent =
+    stats && previousStats
+      ? (
+          ((stats.today_revenue - previousStats.today_revenue) /
+            previousStats.today_revenue) *
+          100
+        ).toFixed(1)
+      : "0";
+
+  const orderGrowth =
+    stats && previousStats
+      ? (
+          ((stats.today_orders - previousStats.today_orders) /
+            previousStats.today_orders) *
+          100
+        ).toFixed(1)
+      : "0";
+
+  if (isLoading) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50 to-purple-50 flex items-center justify-center">
+        <div className="text-center">
+          <Loader className="w-12 h-12 text-blue-600 animate-spin mx-auto mb-4" />
+          <p className="text-slate-600">Loading dashboard data...</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50 to-purple-50 flex items-center justify-center p-6">
+        <div className="max-w-md bg-white rounded-2xl p-8 border border-red-200 shadow-lg">
+          <AlertCircle className="w-12 h-12 text-red-600 mx-auto mb-4" />
+          <h2 className="text-xl font-bold text-slate-900 text-center mb-2">
+            Dashboard Error
+          </h2>
+          <p className="text-slate-600 text-center mb-6">{error}</p>
+          <button
+            onClick={() => window.location.reload()}
+            className="w-full px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 font-semibold"
+          >
+            Retry
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-50 via-blue-50 to-purple-50">
@@ -93,7 +233,7 @@ export default function AdminDashboard() {
                 Dashboard
               </h1>
               <p className="text-slate-600 text-sm mt-1">
-                Welcome back, Admin!
+                Real-time POS System Analytics
               </p>
             </div>
             <div className="flex items-center gap-3">
@@ -118,19 +258,28 @@ export default function AdminDashboard() {
               <div className="p-3 bg-gradient-to-br from-blue-100 to-blue-50 rounded-xl">
                 <ShoppingCart className="w-6 h-6 text-blue-600" />
               </div>
-              <div className="flex items-center gap-1 text-green-600 text-sm font-semibold">
-                <ArrowUpRight className="w-4 h-4" />
-                <span>{orderGrowth}%</span>
-              </div>
+              {stats && previousStats && (
+                <div
+                  className={`flex items-center gap-1 text-sm font-semibold ${
+                    parseFloat(orderGrowth) >= 0
+                      ? "text-green-600"
+                      : "text-red-600"
+                  }`}
+                >
+                  {parseFloat(orderGrowth) >= 0 ? (
+                    <ArrowUpRight className="w-4 h-4" />
+                  ) : (
+                    <ArrowDownRight className="w-4 h-4" />
+                  )}
+                  <span>{Math.abs(parseFloat(orderGrowth))}%</span>
+                </div>
+              )}
             </div>
             <p className="text-slate-600 text-sm font-medium">Today's Orders</p>
             <div className="mt-2 flex items-baseline gap-2">
               <h3 className="text-3xl font-bold text-slate-900">
-                {mockStats.today_orders}
+                {stats?.today_orders || 0}
               </h3>
-              <span className="text-slate-500 text-sm">
-                vs {mockStats.yesterday_orders} yesterday
-              </span>
             </div>
           </div>
 
@@ -157,15 +306,21 @@ export default function AdminDashboard() {
             <div className="mt-2 flex items-baseline gap-2">
               <h3 className="text-3xl font-bold text-slate-900">
                 {revealRevenue
-                  ? formatCurrency(mockStats.today_revenue)
+                  ? formatCurrency(stats?.today_revenue || 0)
                   : "••••••"}
               </h3>
-              <span
-                className={`text-sm font-semibold ${parseFloat(growthPercent) >= 0 ? "text-green-600" : "text-red-600"}`}
-              >
-                {parseFloat(growthPercent) >= 0 ? "+" : ""}
-                {growthPercent}%
-              </span>
+              {stats && previousStats && (
+                <span
+                  className={`text-sm font-semibold ${
+                    parseFloat(growthPercent) >= 0
+                      ? "text-green-600"
+                      : "text-red-600"
+                  }`}
+                >
+                  {parseFloat(growthPercent) >= 0 ? "+" : ""}
+                  {growthPercent}%
+                </span>
+              )}
             </div>
           </div>
 
@@ -182,13 +337,15 @@ export default function AdminDashboard() {
             <p className="text-slate-600 text-sm font-medium">Active Orders</p>
             <div className="mt-2">
               <h3 className="text-3xl font-bold text-slate-900">
-                {mockStats.active_orders}
+                {stats?.active_orders || 0}
               </h3>
             </div>
             <div className="mt-4 w-full bg-slate-200 rounded-full h-2">
               <div
                 className="bg-gradient-to-r from-orange-400 to-orange-600 h-2 rounded-full transition-all"
-                style={{ width: `${(mockStats.active_orders / 12) * 100}%` }}
+                style={{
+                  width: `${Math.min(((stats?.active_orders || 0) / 12) * 100, 100)}%`,
+                }}
               />
             </div>
           </div>
@@ -200,11 +357,12 @@ export default function AdminDashboard() {
                 <Table2 className="w-6 h-6 text-emerald-600" />
               </div>
               <span className="text-emerald-600 text-sm font-semibold">
-                {Math.round(
-                  (mockStats.occupied_tables /
-                    (mockStats.occupied_tables + 3)) *
-                    100,
-                )}
+                {stats
+                  ? Math.round(
+                      (stats.occupied_tables / (stats.occupied_tables + 3)) *
+                        100,
+                    )
+                  : 0}
                 % Full
               </span>
             </div>
@@ -213,7 +371,7 @@ export default function AdminDashboard() {
             </p>
             <div className="mt-2">
               <h3 className="text-3xl font-bold text-slate-900">
-                {mockStats.occupied_tables}
+                {stats?.occupied_tables || 0}
                 <span className="text-xl text-slate-400 font-normal">/8</span>
               </h3>
             </div>
@@ -222,7 +380,7 @@ export default function AdminDashboard() {
                 <div
                   key={i}
                   className={`flex-1 h-1.5 rounded-full ${
-                    i < mockStats.occupied_tables
+                    i < (stats?.occupied_tables || 0)
                       ? "bg-emerald-500"
                       : "bg-slate-200"
                   }`}
@@ -242,7 +400,7 @@ export default function AdminDashboard() {
                   Revenue Trend
                 </h2>
                 <p className="text-slate-600 text-sm mt-1">
-                  Hourly breakdown for today
+                  Income breakdown for {selectedPeriod}
                 </p>
               </div>
 
@@ -265,47 +423,54 @@ export default function AdminDashboard() {
               </div>
             </div>
 
-            <ResponsiveContainer width="100%" height={300}>
-              <LineChart data={mockIncomeData}>
-                <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
-                <XAxis
-                  dataKey="period"
-                  stroke="#94a3b8"
-                  tick={{ fontSize: 12 }}
-                />
-                <YAxis stroke="#94a3b8" tick={{ fontSize: 12 }} />
-                <Tooltip
-                  contentStyle={{
-                    backgroundColor: "#0f172a",
-                    borderRadius: "12px",
-                    border: "none",
-                  }}
-                  labelStyle={{ color: "#e5e7eb", fontWeight: 600 }}
-                  itemStyle={{ color: "#e5e7eb" }}
-                />
-                <Legend verticalAlign="top" height={36} />
+            {incomeData.length > 0 ? (
+              <ResponsiveContainer width="100%" height={300}>
+                <LineChart data={incomeData}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
+                  <XAxis
+                    dataKey="period"
+                    stroke="#94a3b8"
+                    tick={{ fontSize: 12 }}
+                  />
+                  <YAxis stroke="#94a3b8" tick={{ fontSize: 12 }} />
+                  <Tooltip
+                    contentStyle={{
+                      backgroundColor: "#0f172a",
+                      borderRadius: "12px",
+                      border: "none",
+                    }}
+                    labelStyle={{ color: "#e5e7eb", fontWeight: 600 }}
+                    itemStyle={{ color: "#e5e7eb" }}
+                    formatter={(value: number) => formatCurrency(value)}
+                  />
+                  <Legend verticalAlign="top" height={36} />
 
-                <Line
-                  type="monotone"
-                  dataKey="gross"
-                  stroke="#2563eb"
-                  strokeWidth={3}
-                  dot={{ r: 4, fill: "#2563eb" }}
-                  activeDot={{ r: 6 }}
-                  name="Gross Income"
-                />
+                  <Line
+                    type="monotone"
+                    dataKey="gross"
+                    stroke="#2563eb"
+                    strokeWidth={3}
+                    dot={{ r: 4, fill: "#2563eb" }}
+                    activeDot={{ r: 6 }}
+                    name="Gross Income"
+                  />
 
-                <Line
-                  type="monotone"
-                  dataKey="net"
-                  stroke="#7c3aed"
-                  strokeWidth={3}
-                  dot={{ r: 4, fill: "#7c3aed" }}
-                  activeDot={{ r: 6 }}
-                  name="Net Income"
-                />
-              </LineChart>
-            </ResponsiveContainer>
+                  <Line
+                    type="monotone"
+                    dataKey="net"
+                    stroke="#7c3aed"
+                    strokeWidth={3}
+                    dot={{ r: 4, fill: "#7c3aed" }}
+                    activeDot={{ r: 6 }}
+                    name="Net Income"
+                  />
+                </LineChart>
+              </ResponsiveContainer>
+            ) : (
+              <div className="h-300 flex items-center justify-center text-slate-500">
+                No data available for this period
+              </div>
+            )}
           </div>
 
           {/* Order Status Pie */}
@@ -314,83 +479,89 @@ export default function AdminDashboard() {
               Order Status
             </h2>
 
-            <ResponsiveContainer width="100%" height={300}>
-              <PieChart>
-                <Pie
-                  data={mockOrderStatus}
-                  cx="50%"
-                  cy="50%"
-                  innerRadius={60}
-                  outerRadius={100}
-                  paddingAngle={4}
-                  dataKey="value"
-                >
-                  {mockOrderStatus.map((entry, index) => (
-                    <Cell
-                      key={`cell-${index}`}
-                      fill={entry.color}
-                      className="hover:opacity-80 transition-opacity"
+            {orderStatusData.length > 0 ? (
+              <>
+                <ResponsiveContainer width="100%" height={300}>
+                  <PieChart>
+                    <Pie
+                      data={orderStatusData}
+                      cx="50%"
+                      cy="50%"
+                      innerRadius={60}
+                      outerRadius={100}
+                      paddingAngle={4}
+                      dataKey="value"
+                    >
+                      {orderStatusData.map((entry, index) => (
+                        <Cell
+                          key={`cell-${index}`}
+                          fill={entry.color}
+                          className="hover:opacity-80 transition-opacity"
+                        />
+                      ))}
+                    </Pie>
+
+                    <Tooltip
+                      contentStyle={{
+                        backgroundColor: "#0f172a",
+                        borderRadius: "12px",
+                        border: "none",
+                      }}
+                      labelStyle={{ color: "#e5e7eb", fontWeight: 600 }}
+                      itemStyle={{ color: "#e5e7eb" }}
                     />
+                  </PieChart>
+                </ResponsiveContainer>
+
+                {/* Legend Manual */}
+                <div className="mt-4 space-y-2">
+                  {orderStatusData.map((item) => (
+                    <div
+                      key={item.name}
+                      className="flex items-center justify-between text-sm"
+                    >
+                      <div className="flex items-center gap-2">
+                        <span
+                          className="w-3 h-3 rounded-full"
+                          style={{ backgroundColor: item.color }}
+                        />
+                        <span className="text-slate-700 font-medium">
+                          {item.name}
+                        </span>
+                      </div>
+                      <span className="font-bold text-slate-900">
+                        {item.value}
+                      </span>
+                    </div>
                   ))}
-                </Pie>
-
-                <Tooltip
-                  contentStyle={{
-                    backgroundColor: "#0f172a",
-                    borderRadius: "12px",
-                    border: "none",
-                  }}
-                  labelStyle={{ color: "#e5e7eb", fontWeight: 600 }}
-                  itemStyle={{ color: "#e5e7eb" }}
-                />
-              </PieChart>
-            </ResponsiveContainer>
-
-            {/* Legend Manual */}
-            <div className="mt-4 space-y-2">
-              {mockOrderStatus.map((item) => (
-                <div
-                  key={item.name}
-                  className="flex items-center justify-between text-sm"
-                >
-                  <div className="flex items-center gap-2">
-                    <span
-                      className="w-3 h-3 rounded-full"
-                      style={{ backgroundColor: item.color }}
-                    />
-                    <span className="text-slate-700 font-medium">
-                      {item.name}
-                    </span>
-                  </div>
-                  <span className="font-bold text-slate-900">{item.value}</span>
                 </div>
-              ))}
-            </div>
+              </>
+            ) : (
+              <div className="h-300 flex items-center justify-center text-slate-500">
+                No orders data
+              </div>
+            )}
           </div>
         </div>
 
-        {/* Bottom Section - Tables & Quick Actions */}
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-          {/* Table Status */}
-          <div className="lg:col-span-2 bg-white rounded-2xl p-6 shadow-sm border border-slate-200/50">
-            <div className="flex items-center justify-between mb-6">
-              <h2 className="text-xl font-bold text-slate-900">Table Status</h2>
-              <button className="text-blue-600 hover:text-blue-700 text-sm font-semibold">
-                View All
-              </button>
-            </div>
+        {/* Table Status Section */}
+        {tableStatusData.length > 0 && (
+          <div className="bg-white rounded-2xl p-6 shadow-sm border border-slate-200/50">
+            <h2 className="text-xl font-bold text-slate-900 mb-6">
+              Table Status by Location
+            </h2>
             <div className="space-y-4">
-              {mockTableStatus.map((table, idx) => (
+              {tableStatusData.map((location, idx) => (
                 <div
                   key={idx}
                   className="p-4 bg-gradient-to-r from-slate-50 to-slate-100 rounded-xl"
                 >
                   <div className="flex items-center justify-between mb-3">
                     <h3 className="font-semibold text-slate-900">
-                      {table.location}
+                      {location.location}
                     </h3>
                     <span className="text-sm text-slate-600">
-                      {table.occupied}/{table.total} tables
+                      {location.occupied}/{location.total} tables
                     </span>
                   </div>
                   <div className="flex gap-2">
@@ -398,36 +569,36 @@ export default function AdminDashboard() {
                       <div
                         className="bg-gradient-to-r from-blue-600 to-blue-500 h-full"
                         style={{
-                          width: `${(table.occupied / table.total) * 100}%`,
+                          width: `${(location.occupied / location.total) * 100}%`,
                         }}
                       />
                     </div>
                     <span className="text-xs font-semibold text-slate-600 w-12 text-right">
-                      {Math.round((table.occupied / table.total) * 100)}%
+                      {Math.round(location.occupancy_rate)}%
                     </span>
                   </div>
                 </div>
               ))}
             </div>
           </div>
+        )}
 
-          {/* Quick Actions */}
-          <div className="bg-gradient-to-br from-blue-500 to-blue-500 rounded-2xl p-6 shadow-sm text-white">
-            <h2 className="text-xl font-bold mb-6">Quick Actions</h2>
-            <div className="space-y-3">
-              <button className="w-full flex items-center gap-3 px-4 py-3 bg-white/20 hover:bg-white/30 rounded-xl transition-all backdrop-blur-sm">
-                <Plus className="w-5 h-5" />
-                <span className="text-sm font-semibold">New Order</span>
-              </button>
-              <button className="w-full flex items-center gap-3 px-4 py-3 bg-white/20 hover:bg-white/30 rounded-xl transition-all backdrop-blur-sm">
-                <Users className="w-5 h-5" />
-                <span className="text-sm font-semibold">Manage Staff</span>
-              </button>
-              <button className="w-full flex items-center gap-3 px-4 py-3 bg-white/20 hover:bg-white/30 rounded-xl transition-all backdrop-blur-sm">
-                <Settings className="w-5 h-5" />
-                <span className="text-sm font-semibold">Settings</span>
-              </button>
-            </div>
+        {/* Quick Actions */}
+        <div className="bg-gradient-to-br from-blue-500 to-blue-600 rounded-2xl p-6 shadow-sm text-white">
+          <h2 className="text-xl font-bold mb-6">Quick Actions</h2>
+          <div className="space-y-3">
+            <button className="w-full flex items-center gap-3 px-4 py-3 bg-white/20 hover:bg-white/30 rounded-xl transition-all backdrop-blur-sm">
+              <Plus className="w-5 h-5" />
+              <span className="text-sm font-semibold">New Order</span>
+            </button>
+            <button className="w-full flex items-center gap-3 px-4 py-3 bg-white/20 hover:bg-white/30 rounded-xl transition-all backdrop-blur-sm">
+              <Users className="w-5 h-5" />
+              <span className="text-sm font-semibold">Manage Staff</span>
+            </button>
+            <button className="w-full flex items-center gap-3 px-4 py-3 bg-white/20 hover:bg-white/30 rounded-xl transition-all backdrop-blur-sm">
+              <Settings className="w-5 h-5" />
+              <span className="text-sm font-semibold">Settings</span>
+            </button>
           </div>
         </div>
       </div>

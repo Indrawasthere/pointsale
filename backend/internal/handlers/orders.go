@@ -104,7 +104,6 @@ func (h *OrderHandler) GetOrders(c *gin.Context) {
 	}
 	defer rows.Close()
 
-	var orders []models.Order
 	for rows.Next() {
 		var order models.Order
 		var tableNumber, tableLocation sql.NullString
